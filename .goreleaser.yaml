@@ -17,7 +17,6 @@ builds:
     ldflags:
       - -s -w -X main.version={{ .Version }}
     goos:
-      - linux
       - darwin
       - windows
     goarch:
@@ -38,6 +37,23 @@ archives:
       - goos: windows
         formats:
           - zip
+
+homebrew_casks:
+  - name: chief-mcp
+    binaries:
+      - chief-mcp
+    repository:
+      owner: Storytell-ai
+      name: homebrew-tap
+      branch: main
+    homepage: "https://github.com/Storytell-ai/chief-mcp"
+    description: "Chief MCP server"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/chief-mcp"]
+          end
 
 changelog:
   sort: asc
