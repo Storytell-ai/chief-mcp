@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+/chief-mcp
 
 # Test binary, built with `go test -c`
 *.test

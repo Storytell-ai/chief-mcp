@@ -8,6 +8,7 @@ import (
 )
 
 var toolGroups = []func(*mcp.Server, *chief.Client){
+	registerChatTools,
 	registerAssetTools,
 	registerLabelTools,
 	registerActionTools,

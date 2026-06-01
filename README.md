@@ -9,6 +9,7 @@ It is a single static Go binary built on the [Chief Go SDK](https://github.com/S
 
 ## Features
 
+- **Chats** — Open a chat and send follow-up turns, optionally waiting for the response; list, get, rename, and delete chats; list, get, and delete individual messages.
 - **Assets** — Upload local files as assets, optionally waiting for ingest to finish; list, get, update, and delete them.
 - **Labels** — Create, list, get, update, and delete labels; attach and detach them on assets by name.
 - **Actions** — Create scheduled or event-triggered actions with optional email outcomes; list, get, update, delete, enable, and disable them.
