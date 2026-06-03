@@ -18,6 +18,12 @@ const (
 	toolDisableAction = "disable_action"
 )
 
+type listActionsRequest struct {
+	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of actions to return; the server clamps to its own bounds"`
+	AfterID  string `json:"after_id,omitempty" jsonschema:"page forward from this action ID"`
+	BeforeID string `json:"before_id,omitempty" jsonschema:"page backward from this action ID"`
+}
+
 type actionIDRequest struct {
 	ActionID string `json:"action_id" jsonschema:"the action ID"`
 }
@@ -38,7 +44,7 @@ func registerActionTools(s *mcp.Server, c *chief.Client) {
 	}, createAction)
 	addTool(s, c, toolMeta{
 		name: toolListActions,
-		desc: "List every action in the project.",
+		desc: "List the actions visible in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
 	}, listActions)
 	addTool(s, c, toolMeta{
 		name: toolGetAction,
@@ -70,12 +76,23 @@ func createAction(ctx context.Context, c *chief.Client, req chief.ActionRequest)
 	return action, fmt.Sprintf("created action %s (%s)", action.Name, action.ActionID), nil
 }
 
-func listActions(ctx context.Context, c *chief.Client, _ struct{}) (*chief.ActionPage, string, error) {
-	page, err := c.Actions.List(ctx)
+func listActions(ctx context.Context, c *chief.Client, req listActionsRequest) (*chief.ActionPage, string, error) {
+	var opts []chief.ListOption
+	if req.Limit > 0 {
+		opts = append(opts, chief.WithLimit(req.Limit))
+	}
+	if req.AfterID != "" {
+		opts = append(opts, chief.WithAfterID(req.AfterID))
+	}
+	if req.BeforeID != "" {
+		opts = append(opts, chief.WithBeforeID(req.BeforeID))
+	}
+
+	page, err := c.Actions.List(ctx, opts...)
 	if err != nil {
 		return nil, "", fmt.Errorf("list actions: %w", err)
 	}
-	return page, fmt.Sprintf("%d action(s) returned", len(page.Data)), nil
+	return page, fmt.Sprintf("%d action(s) returned (has_more %t)", len(page.Data), page.HasMore), nil
 }
 
 func getAction(ctx context.Context, c *chief.Client, req actionIDRequest) (*chief.ActionResponse, string, error) {
