@@ -18,6 +18,12 @@ const (
 	toolDetachLabel = "detach_label"
 )
 
+type listLabelsRequest struct {
+	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of labels to return; the server clamps to its own bounds"`
+	AfterID  string `json:"after_id,omitempty" jsonschema:"page forward from this label ID"`
+	BeforeID string `json:"before_id,omitempty" jsonschema:"page backward from this label ID"`
+}
+
 type attachLabelRequest struct {
 	AssetID   string `json:"asset_id" jsonschema:"the asset to attach the label to"`
 	LabelName string `json:"label_name" jsonschema:"the label name; a name with no matching label is auto-created"`
@@ -52,7 +58,7 @@ func registerLabelTools(s *mcp.Server, c *chief.Client) {
 	}, createLabel)
 	addTool(s, c, toolMeta{
 		name: toolListLabels,
-		desc: "List every label in the project.",
+		desc: "List the labels visible in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
 	}, listLabels)
 	addTool(s, c, toolMeta{
 		name: toolGetLabel,
@@ -84,12 +90,23 @@ func createLabel(ctx context.Context, c *chief.Client, req chief.CreateLabelRequ
 	return label, fmt.Sprintf("created label %s (%s)", label.Name, label.LabelID), nil
 }
 
-func listLabels(ctx context.Context, c *chief.Client, _ struct{}) (*chief.LabelPage, string, error) {
-	page, err := c.Labels.List(ctx)
+func listLabels(ctx context.Context, c *chief.Client, req listLabelsRequest) (*chief.LabelPage, string, error) {
+	var opts []chief.ListOption
+	if req.Limit > 0 {
+		opts = append(opts, chief.WithLimit(req.Limit))
+	}
+	if req.AfterID != "" {
+		opts = append(opts, chief.WithAfterID(req.AfterID))
+	}
+	if req.BeforeID != "" {
+		opts = append(opts, chief.WithBeforeID(req.BeforeID))
+	}
+
+	page, err := c.Labels.List(ctx, opts...)
 	if err != nil {
 		return nil, "", fmt.Errorf("list labels: %w", err)
 	}
-	return page, fmt.Sprintf("%d label(s) returned", len(page.Data)), nil
+	return page, fmt.Sprintf("%d label(s) returned (has_more %t)", len(page.Data), page.HasMore), nil
 }
 
 func getLabel(ctx context.Context, c *chief.Client, req labelIDRequest) (*chief.LabelResponse, string, error) {
