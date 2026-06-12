@@ -2,6 +2,8 @@ module github.com/Storytell-ai/chief-mcp
 
 go 1.26.3
 
+replace github.com/Storytell-ai/chief-go => ../chief-go
+
 require (
 	github.com/Storytell-ai/chief-go v0.3.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
