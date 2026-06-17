@@ -19,6 +19,15 @@ const (
 	toolListMessages  = "list_messages"
 	toolGetMessage    = "get_message"
 	toolDeleteMessage = "delete_message"
+
+	toolSetChatVisibility   = "set_chat_visibility"
+	toolListChatMembers     = "list_chat_members"
+	toolAddChatMember       = "add_chat_member"
+	toolRemoveChatMember    = "remove_chat_member"
+	toolCreateShareLink     = "create_share_link"
+	toolGetShareLink        = "get_share_link"
+	toolRegenerateShareLink = "regenerate_share_link"
+	toolDeleteShareLink     = "delete_share_link"
 )
 
 const defaultChatResponseTimeout = 360 * time.Second
@@ -56,6 +65,21 @@ type messageRequest struct {
 	MessageID string `json:"message_id" jsonschema:"the message ID"`
 }
 
+type setChatVisibilityRequest struct {
+	ChatID     string               `json:"chat_id" jsonschema:"the chat to change"`
+	Visibility chief.ChatVisibility `json:"visibility" jsonschema:"one of \"project\", \"restricted\", \"private\""`
+}
+
+type addChatMemberRequest struct {
+	ChatID string `json:"chat_id" jsonschema:"the restricted chat"`
+	Email  string `json:"email" jsonschema:"the email of a current member of the chat's project"`
+}
+
+type removeChatMemberRequest struct {
+	ChatID string `json:"chat_id" jsonschema:"the restricted chat"`
+	UserID string `json:"user_id" jsonschema:"the user to remove; use the user_id returned by list_chat_members"`
+}
+
 // createChatResponse and sendMessageResponse carry the async accept fields plus
 // the resolved Response, which stays empty unless wait_for_response was set.
 type createChatResponse struct {
@@ -76,6 +100,14 @@ type deleteChatResponse struct {
 }
 
 type deleteMessageResponse struct {
+	Deleted bool `json:"deleted"`
+}
+
+type removeChatMemberResponse struct {
+	Removed bool `json:"removed"`
+}
+
+type deleteShareLinkResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
@@ -116,6 +148,38 @@ func registerChatTools(s *mcp.Server, c *chief.Client) {
 		name: toolDeleteMessage,
 		desc: "Delete a single message from a chat permanently.",
 	}, deleteMessage)
+	addTool(s, c, toolMeta{
+		name: toolSetChatVisibility,
+		desc: "Set a chat's access level: \"project\" lets every project member read it, \"restricted\" limits reads to the owner plus the audience managed via the chat member tools, \"private\" is owner-only. Setting restricted keeps any audience the chat already had; switching to project or private clears it.",
+	}, setChatVisibility)
+	addTool(s, c, toolMeta{
+		name: toolListChatMembers,
+		desc: "List a restricted chat's audience. Use the returned user_id with remove_chat_member.",
+	}, listChatMembers)
+	addTool(s, c, toolMeta{
+		name: toolAddChatMember,
+		desc: "Add one project member to a restricted chat's audience by email. The email must belong to a current member of the chat's project. Re-adding an existing member succeeds without change. The chat must already be restricted; other visibility levels respond 409.",
+	}, addChatMember)
+	addTool(s, c, toolMeta{
+		name: toolRemoveChatMember,
+		desc: "Remove one user from a restricted chat's audience by user_id. The chat must already be restricted; other visibility levels respond 409.",
+	}, removeChatMember)
+	addTool(s, c, toolMeta{
+		name: toolCreateShareLink,
+		desc: "Create a chat's public share link. Anyone with the URL can read the conversation without authentication. Each chat has at most one active link: when one already exists it is returned unchanged; use regenerate_share_link to rotate it.",
+	}, createShareLink)
+	addTool(s, c, toolMeta{
+		name: toolGetShareLink,
+		desc: "Get a chat's share-link status. url and created_at are empty when the chat isn't shared.",
+	}, getShareLink)
+	addTool(s, c, toolMeta{
+		name: toolRegenerateShareLink,
+		desc: "Revoke a chat's current share link, if any, and mint a new URL. The old URL stops working immediately.",
+	}, regenerateShareLink)
+	addTool(s, c, toolMeta{
+		name: toolDeleteShareLink,
+		desc: "Revoke a chat's share link. The public URL stops working immediately. Responds 404 when no active link exists.",
+	}, deleteShareLink)
 }
 
 func createChat(ctx context.Context, c *chief.Client, req createChatRequest) (*createChatResponse, string, error) {
@@ -227,4 +291,69 @@ func deleteMessage(ctx context.Context, c *chief.Client, req messageRequest) (de
 		return deleteMessageResponse{}, "", fmt.Errorf("delete message %q in chat %q: %w", req.MessageID, req.ChatID, err)
 	}
 	return deleteMessageResponse{Deleted: true}, fmt.Sprintf("deleted message %s from chat %s", req.MessageID, req.ChatID), nil
+}
+
+func setChatVisibility(ctx context.Context, c *chief.Client, req setChatVisibilityRequest) (*chief.ChatVisibilityResponse, string, error) {
+	resp, err := c.Chats.SetVisibility(ctx, req.ChatID, req.Visibility)
+	if err != nil {
+		return nil, "", fmt.Errorf("set chat %q visibility to %q: %w", req.ChatID, req.Visibility, err)
+	}
+	return resp, fmt.Sprintf("chat %s visibility set to %s", resp.ChatID, resp.Visibility), nil
+}
+
+func listChatMembers(ctx context.Context, c *chief.Client, req chatIDRequest) (*chief.ChatMemberList, string, error) {
+	list, err := c.Chats.ListMembers(ctx, req.ChatID)
+	if err != nil {
+		return nil, "", fmt.Errorf("list members of chat %q: %w", req.ChatID, err)
+	}
+	return list, fmt.Sprintf("%d member(s) in chat %s", len(list.Members), req.ChatID), nil
+}
+
+func addChatMember(ctx context.Context, c *chief.Client, req addChatMemberRequest) (*chief.ChatMember, string, error) {
+	member, err := c.Chats.AddMember(ctx, req.ChatID, req.Email)
+	if err != nil {
+		return nil, "", fmt.Errorf("add member %q to chat %q: %w", req.Email, req.ChatID, err)
+	}
+	return member, fmt.Sprintf("added %s to chat %s", member.Email, req.ChatID), nil
+}
+
+func removeChatMember(ctx context.Context, c *chief.Client, req removeChatMemberRequest) (removeChatMemberResponse, string, error) {
+	if err := c.Chats.RemoveMember(ctx, req.ChatID, req.UserID); err != nil {
+		return removeChatMemberResponse{}, "", fmt.Errorf("remove member %q from chat %q: %w", req.UserID, req.ChatID, err)
+	}
+	return removeChatMemberResponse{Removed: true}, fmt.Sprintf("removed user %s from chat %s", req.UserID, req.ChatID), nil
+}
+
+func createShareLink(ctx context.Context, c *chief.Client, req chatIDRequest) (*chief.ShareLinkResponse, string, error) {
+	link, err := c.Chats.CreateShareLink(ctx, req.ChatID)
+	if err != nil {
+		return nil, "", fmt.Errorf("create share link for chat %q: %w", req.ChatID, err)
+	}
+	return link, fmt.Sprintf("share link for chat %s: %s", req.ChatID, link.URL), nil
+}
+
+func getShareLink(ctx context.Context, c *chief.Client, req chatIDRequest) (*chief.ShareLinkResponse, string, error) {
+	link, err := c.Chats.GetShareLink(ctx, req.ChatID)
+	if err != nil {
+		return nil, "", fmt.Errorf("get share link for chat %q: %w", req.ChatID, err)
+	}
+	if !link.IsShared {
+		return link, fmt.Sprintf("chat %s is not shared", req.ChatID), nil
+	}
+	return link, fmt.Sprintf("chat %s is shared: %s", req.ChatID, link.URL), nil
+}
+
+func regenerateShareLink(ctx context.Context, c *chief.Client, req chatIDRequest) (*chief.ShareLinkResponse, string, error) {
+	link, err := c.Chats.RegenerateShareLink(ctx, req.ChatID)
+	if err != nil {
+		return nil, "", fmt.Errorf("regenerate share link for chat %q: %w", req.ChatID, err)
+	}
+	return link, fmt.Sprintf("regenerated share link for chat %s: %s", req.ChatID, link.URL), nil
+}
+
+func deleteShareLink(ctx context.Context, c *chief.Client, req chatIDRequest) (deleteShareLinkResponse, string, error) {
+	if err := c.Chats.DeleteShareLink(ctx, req.ChatID); err != nil {
+		return deleteShareLinkResponse{}, "", fmt.Errorf("delete share link for chat %q: %w", req.ChatID, err)
+	}
+	return deleteShareLinkResponse{Deleted: true}, fmt.Sprintf("deleted share link for chat %s", req.ChatID), nil
 }

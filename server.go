@@ -15,6 +15,7 @@ var toolGroups = []func(*mcp.Server, *chief.Client){
 	registerSessionTools,
 	registerSkillTools,
 	registerMemoryTools,
+	registerProjectTools,
 }
 
 // newServer builds an MCP server bound to one client and registers every tool.
