@@ -1,11 +1,11 @@
-package main
+package mcp
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -42,7 +42,7 @@ type deleteProjectInvitationResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerProjectTools(s *mcp.Server, c *chief.Client) {
+func registerProjectTools(s *mcpsdk.Server, c *chief.Client) {
 	addTool(s, c, toolMeta{
 		name: toolListProjects,
 		desc: "List the projects the API key can access. Project tools need only the API key, not the configured project ID.",

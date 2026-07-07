@@ -1,11 +1,11 @@
-package main
+package mcp
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -37,7 +37,7 @@ type deleteSkillResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerSkillTools(s *mcp.Server, c *chief.Client) {
+func registerSkillTools(s *mcpsdk.Server, c *chief.Client) {
 	addTool(s, c, toolMeta{
 		name: toolCreateSkill,
 		desc: "Create a skill in the project. scope is \"project\" or \"user\". category is \"skill\" or \"persona\". Content is the skill body.",

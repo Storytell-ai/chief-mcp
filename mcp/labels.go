@@ -1,11 +1,11 @@
-package main
+package mcp
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -51,7 +51,7 @@ type detachLabelResponse struct {
 	Detached bool `json:"detached"`
 }
 
-func registerLabelTools(s *mcp.Server, c *chief.Client) {
+func registerLabelTools(s *mcpsdk.Server, c *chief.Client) {
 	addTool(s, c, toolMeta{
 		name: toolCreateLabel,
 		desc: "Create a label in the project. Color, when set, must be a 6-digit hex code like #6b7280.",

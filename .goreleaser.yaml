@@ -8,7 +8,7 @@ before:
 
 builds:
   - id: chief-mcp
-    main: .
+    main: ./cmd/chief-mcp
     binary: chief-mcp
     env:
       - CGO_ENABLED=0

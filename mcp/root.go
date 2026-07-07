@@ -1,4 +1,4 @@
-package main
+package mcp
 
 import (
 	"context"
@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // resolvedFlags holds the connection flags; empty fields default to CHIEF_* env
@@ -69,20 +70,21 @@ func runStdio(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return newServer(c).Run(ctx, &mcp.StdioTransport{})
+	return newServer(c).Run(ctx, &mcpsdk.StdioTransport{})
 }
 
 func runHTTP(ctx context.Context, args []string) error {
 	flags := &resolvedFlags{}
 	fs := flag.NewFlagSet("http", flag.ExitOnError)
 	registerConnectionFlags(fs, flags)
-	addr := fs.String("addr", ":8080", "address to listen on")
+	addr := fs.String("addr", ":8080", "public address to listen on")
+	internalAddr := fs.String("internal-addr", ":9090", "internal address for health probes")
 	path := fs.String("path", "/mcp", "path to mount the MCP endpoint on")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}
 
-	return serveHTTP(ctx, flags, *addr, *path)
+	return serveHTTP(ctx, flags, *addr, *internalAddr, *path)
 }
 
 // newClient builds a Client from the resolved flags.
@@ -98,30 +100,56 @@ func newClient(flags *resolvedFlags) (*chief.Client, error) {
 
 type clientContextKey struct{}
 
-// serveHTTP mounts the Streamable HTTP handler behind a per-request auth gate.
-// The gate stashes a request-scoped client in the context for the SDK's
-// getServer callback, which can't return an error, so a missing token must be
-// rejected with 401 before the handler runs.
-func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, path string) error {
-	streamable := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+// serveHTTP runs the public MCP server and the internal health server together.
+//
+// The public server mounts the Streamable HTTP handler behind a per-request
+// auth gate. The gate stashes a request-scoped client in the context for the
+// SDK's getServer callback, which can't return an error, so a missing token
+// must be rejected with 401 before the handler runs.
+//
+// The internal server exposes unauthenticated /livez and /readyz probes for
+// Kubernetes on a separate address. Both servers shut down gracefully when the
+// context is cancelled; the first non-graceful listener error returns.
+func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, internalAddr, path string) error {
+	streamable := mcpsdk.NewStreamableHTTPHandler(func(r *http.Request) *mcpsdk.Server {
 		c, _ := r.Context().Value(clientContextKey{}).(*chief.Client)
 		return newServer(c)
 	}, nil)
 
-	mux := http.NewServeMux()
-	mux.Handle(path, authMiddleware(flags, streamable))
+	publicMux := http.NewServeMux()
+	publicMux.Handle(path, authMiddleware(flags, streamable))
+	public := &http.Server{Addr: addr, Handler: publicMux}
 
-	srv := &http.Server{Addr: addr, Handler: mux}
-	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
-	}()
+	internalMux := http.NewServeMux()
+	internalMux.HandleFunc("GET /livez", healthOK)
+	internalMux.HandleFunc("GET /readyz", healthOK)
+	internal := &http.Server{Addr: internalAddr, Handler: internalMux}
 
-	fmt.Fprintf(os.Stderr, "chief-mcp listening on %s%s\n", addr, path)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return err
+	errc := make(chan error, 2)
+	serve := func(srv *http.Server, label string) {
+		fmt.Fprintf(os.Stderr, "chief-mcp %s listening on %s\n", label, srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errc <- err
+		}
 	}
-	return nil
+	go serve(public, "public")
+	go serve(internal, "internal")
+
+	var serveErr error
+	select {
+	case <-ctx.Done():
+	case serveErr = <-errc:
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = public.Shutdown(shutdownCtx)
+	_ = internal.Shutdown(shutdownCtx)
+	return serveErr
+}
+
+func healthOK(w http.ResponseWriter, _ *http.Request) {
+	_, _ = w.Write([]byte("ok"))
 }
 
 // authMiddleware rejects tokenless requests and passes a request-scoped client
