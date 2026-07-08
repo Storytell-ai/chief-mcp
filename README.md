@@ -30,7 +30,7 @@ Authentication is a Chief Personal Access Token sent with every request; there i
 
 ```bash
 claude mcp add chief --transport http https://mcp.chief.bot/mcp \
-  --header "Authorization: Bearer <api-key>" \
+  --header "X-API-Key: <api-key>" \
   --header "X-Project-Id: <project-id>"
 ```
 
@@ -44,7 +44,7 @@ Open the command palette and choose "Cursor Settings" > "MCP" > "Add new global 
     "chief": {
       "url": "https://mcp.chief.bot/mcp",
       "headers": {
-        "Authorization": "Bearer <api-key>",
+        "X-API-Key": "<api-key>",
         "X-Project-Id": "<project-id>"
       }
     }
@@ -52,7 +52,7 @@ Open the command palette and choose "Cursor Settings" > "MCP" > "Add new global 
 }
 ```
 
-Any client that speaks Streamable HTTP can use the same URL and headers. `X-API-Key: <api-key>` works in place of `Authorization`, and wins when both are set.
+Any client that speaks Streamable HTTP can use the same URL and headers. Clients that can only set an `Authorization` header may send `Authorization: Bearer <api-key>` instead; `X-API-Key` wins when both are present.
 
 ## Setup
 
@@ -163,7 +163,7 @@ env = { CHIEF_API_KEY = "<api-key>", CHIEF_PROJECT_ID = "<project-id>" }
 
 ### HTTP Transport
 
-This is the transport the hosted server exposes; run it yourself to keep the server inside your own network. Each client authenticates per request by passing its API key as a Bearer token in the `Authorization` header (or in `X-API-Key`), and selects a project with the `X-Project-Id` header.
+This is the transport the hosted server exposes; run it yourself to keep the server inside your own network. Each client authenticates per request by passing its API key in the `X-API-Key` header, and selects a project with the `X-Project-Id` header.
 
 Start the server:
 
@@ -177,7 +177,7 @@ The server listens on `http://localhost:8080` and exposes the MCP endpoint at `/
 
 ```bash
 claude mcp add chief --transport http http://localhost:8080/mcp \
-  --header "Authorization: Bearer <api-key>" \
+  --header "X-API-Key: <api-key>" \
   --header "X-Project-Id: <project-id>"
 ```
 
@@ -191,7 +191,7 @@ Open the command palette and choose "Cursor Settings" > "MCP" > "Add new global 
     "chief": {
       "url": "http://localhost:8080/mcp",
       "headers": {
-        "Authorization": "Bearer <api-key>",
+        "X-API-Key": "<api-key>",
         "X-Project-Id": "<project-id>"
       }
     }
@@ -307,7 +307,7 @@ MCP servers are long-lived stdio processes that don't hot-reload. After rebuildi
 
    - Choose **Streamable HTTP** (connect to URL).
    - **URL:** `http://localhost:8080/mcp`
-   - Add headers: `Authorization: Bearer <api-key>` and `X-Project-Id: <project-id>`.
+   - Add headers: `X-API-Key: <api-key>` and `X-Project-Id: <project-id>`.
    - Click **Connect**, then use "List tools" to verify the server is working.
 
 ## License
