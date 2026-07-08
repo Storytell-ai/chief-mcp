@@ -77,14 +77,13 @@ func runHTTP(ctx context.Context, args []string) error {
 	flags := &resolvedFlags{}
 	fs := flag.NewFlagSet("http", flag.ExitOnError)
 	registerConnectionFlags(fs, flags)
-	addr := fs.String("addr", ":8080", "public address to listen on")
-	internalAddr := fs.String("internal-addr", ":9090", "internal address for health probes")
+	addr := fs.String("addr", ":8080", "address to listen on")
 	path := fs.String("path", "/mcp", "path to mount the MCP endpoint on")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}
 
-	return serveHTTP(ctx, flags, *addr, *internalAddr, *path)
+	return serveHTTP(ctx, flags, *addr, *path)
 }
 
 // newClient builds a Client from the resolved flags.
@@ -100,40 +99,44 @@ func newClient(flags *resolvedFlags) (*chief.Client, error) {
 
 type clientContextKey struct{}
 
-// serveHTTP runs the public MCP server and the internal health server together.
+// serveHTTP serves the MCP endpoint and the health probes on one listener.
 //
-// The public server mounts the Streamable HTTP handler behind a per-request
-// auth gate. The gate stashes a request-scoped client in the context for the
-// SDK's getServer callback, which can't return an error, so a missing token
-// must be rejected with 401 before the handler runs.
+// The Streamable HTTP handler sits behind a per-request auth gate. The gate
+// stashes a request-scoped client in the context for the SDK's getServer
+// callback, which can't return an error, so a missing token must be rejected
+// with 401 before the handler runs.
 //
-// The internal server exposes unauthenticated /livez and /readyz probes for
-// Kubernetes on a separate address. Both servers shut down gracefully when the
-// context is cancelled; the first non-graceful listener error returns.
-func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, internalAddr, path string) error {
+// /livez and /readyz are unauthenticated, since the gate wraps only the MCP
+// handler rather than the mux. A deployment that exposes this listener to the
+// internet should route the MCP path alone and leave the probes to whatever
+// reaches the process directly.
+func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, path string) error {
 	streamable := mcpsdk.NewStreamableHTTPHandler(func(r *http.Request) *mcpsdk.Server {
 		c, _ := r.Context().Value(clientContextKey{}).(*chief.Client)
 		return newServer(c)
 	}, nil)
 
-	publicMux := http.NewServeMux()
-	publicMux.Handle(path, authMiddleware(flags, streamable))
-	public := &http.Server{Addr: addr, Handler: publicMux}
+	mux := http.NewServeMux()
+	mux.Handle(path, authMiddleware(flags, streamable))
+	mux.HandleFunc("GET /livez", healthOK)
+	mux.HandleFunc("GET /readyz", healthOK)
 
-	internalMux := http.NewServeMux()
-	internalMux.HandleFunc("GET /livez", healthOK)
-	internalMux.HandleFunc("GET /readyz", healthOK)
-	internal := &http.Server{Addr: internalAddr, Handler: internalMux}
+	// A streamable response stays open for the life of the session, so a
+	// WriteTimeout would sever it mid-stream.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
-	errc := make(chan error, 2)
-	serve := func(srv *http.Server, label string) {
-		fmt.Fprintf(os.Stderr, "chief-mcp %s listening on %s\n", label, srv.Addr)
+	errc := make(chan error, 1)
+	go func() {
+		fmt.Fprintf(os.Stderr, "chief-mcp listening on %s\n", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- err
 		}
-	}
-	go serve(public, "public")
-	go serve(internal, "internal")
+	}()
 
 	var serveErr error
 	select {
@@ -143,8 +146,7 @@ func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, internalAddr, pa
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_ = public.Shutdown(shutdownCtx)
-	_ = internal.Shutdown(shutdownCtx)
+	_ = srv.Shutdown(shutdownCtx)
 	return serveErr
 }
 
