@@ -9,12 +9,12 @@ tasks:
   build:
     desc: Build the chief-mcp server
     cmds:
-      - go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" -o bin/chief-mcp .
+      - go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" -o bin/chief-mcp ./cmd/chief-mcp
 
   run:
     desc: Run the chief-mcp server
     cmds:
-      - go run . {{.CLI_ARGS}}
+      - go run ./cmd/chief-mcp {{.CLI_ARGS}}
 
   install:
     desc: Install the chief-mcp server to GOBIN
@@ -22,7 +22,7 @@ tasks:
       GOBIN:
         sh: go env GOBIN || go env GOPATH | sed 's:$:/bin:'
     cmds:
-      - go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" -o "{{.GOBIN}}/chief-mcp" .
+      - go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" -o "{{.GOBIN}}/chief-mcp" ./cmd/chief-mcp
 
   test:
     desc: Run the test suite

@@ -1,11 +1,11 @@
-package main
+package mcp
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -37,7 +37,7 @@ type deleteActionResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerActionTools(s *mcp.Server, c *chief.Client) {
+func registerActionTools(s *mcpsdk.Server, c *chief.Client) {
 	addTool(s, c, toolMeta{
 		name: toolCreateAction,
 		desc: "Create an action in the project. Prompt is plain text. Provide a schedule for recurring runs or a trigger for event-driven runs. An action always starts enabled.",

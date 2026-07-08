@@ -1,11 +1,11 @@
-package main
+package mcp
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -35,7 +35,7 @@ type deleteMemoryResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerMemoryTools(s *mcp.Server, c *chief.Client) {
+func registerMemoryTools(s *mcpsdk.Server, c *chief.Client) {
 	addTool(s, c, toolMeta{
 		name: toolCreateMemory,
 		desc: "Store a memory in the project. category is one of: identity, preference, fact, context, instruction. importance is an integer. scope is optional and, for now, only accepts \"project\".",

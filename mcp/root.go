@@ -1,4 +1,4 @@
-package main
+package mcp
 
 import (
 	"context"
@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // resolvedFlags holds the connection flags; empty fields default to CHIEF_* env
@@ -69,7 +70,7 @@ func runStdio(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return newServer(c).Run(ctx, &mcp.StdioTransport{})
+	return newServer(c).Run(ctx, &mcpsdk.StdioTransport{})
 }
 
 func runHTTP(ctx context.Context, args []string) error {
@@ -98,30 +99,59 @@ func newClient(flags *resolvedFlags) (*chief.Client, error) {
 
 type clientContextKey struct{}
 
-// serveHTTP mounts the Streamable HTTP handler behind a per-request auth gate.
-// The gate stashes a request-scoped client in the context for the SDK's
-// getServer callback, which can't return an error, so a missing token must be
-// rejected with 401 before the handler runs.
+// serveHTTP serves the MCP endpoint and the health probes on one listener.
+//
+// The Streamable HTTP handler sits behind a per-request auth gate. The gate
+// stashes a request-scoped client in the context for the SDK's getServer
+// callback, which can't return an error, so a missing token must be rejected
+// with 401 before the handler runs.
+//
+// /livez and /readyz are unauthenticated, since the gate wraps only the MCP
+// handler rather than the mux. A deployment that exposes this listener to the
+// internet should route the MCP path alone and leave the probes to whatever
+// reaches the process directly.
 func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, path string) error {
-	streamable := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+	streamable := mcpsdk.NewStreamableHTTPHandler(func(r *http.Request) *mcpsdk.Server {
 		c, _ := r.Context().Value(clientContextKey{}).(*chief.Client)
 		return newServer(c)
 	}, nil)
 
 	mux := http.NewServeMux()
 	mux.Handle(path, authMiddleware(flags, streamable))
+	mux.HandleFunc("GET /livez", healthOK)
+	mux.HandleFunc("GET /readyz", healthOK)
 
-	srv := &http.Server{Addr: addr, Handler: mux}
+	// A streamable response stays open for the life of the session, so a
+	// WriteTimeout would sever it mid-stream.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	errc := make(chan error, 1)
 	go func() {
-		<-ctx.Done()
-		_ = srv.Close()
+		fmt.Fprintf(os.Stderr, "chief-mcp listening on %s\n", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errc <- err
+		}
 	}()
 
-	fmt.Fprintf(os.Stderr, "chief-mcp listening on %s%s\n", addr, path)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return err
+	var serveErr error
+	select {
+	case <-ctx.Done():
+	case serveErr = <-errc:
 	}
-	return nil
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(shutdownCtx)
+	return serveErr
+}
+
+func healthOK(w http.ResponseWriter, _ *http.Request) {
+	_, _ = w.Write([]byte("ok"))
 }
 
 // authMiddleware rejects tokenless requests and passes a request-scoped client

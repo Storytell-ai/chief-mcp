@@ -1,4 +1,4 @@
-package main
+package mcp
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -111,7 +111,7 @@ type deleteShareLinkResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerChatTools(s *mcp.Server, c *chief.Client) {
+func registerChatTools(s *mcpsdk.Server, c *chief.Client) {
 	addTool(s, c, toolMeta{
 		name: toolCreateChat,
 		desc: "Create a chat with its first turn. intelligence picks a mode preset and provider biases vendor selection within it. Turns run asynchronously; set wait_for_response to block until the answer is ready, otherwise poll get_message with the returned message_id.",

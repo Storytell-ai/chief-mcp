@@ -1,4 +1,4 @@
-package main
+package mcp
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -58,7 +58,7 @@ type deleteAssetResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerAssetTools(s *mcp.Server, c *chief.Client) {
+func registerAssetTools(s *mcpsdk.Server, c *chief.Client) {
 	addTool(s, c, toolMeta{
 		name: toolUploadFile,
 		desc: "Upload a local file as an asset. The path is resolved on the host running this MCP server, so this is intended for local stdio usage; uploading inline content over remote HTTP is not yet supported. Returns the asset and whether its content already existed (a dedup hit).",

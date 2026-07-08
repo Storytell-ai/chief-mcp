@@ -1,13 +1,13 @@
-package main
+package mcp
 
 import (
 	"context"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var toolGroups = []func(*mcp.Server, *chief.Client){
+var toolGroups = []func(*mcpsdk.Server, *chief.Client){
 	registerChatTools,
 	registerAssetTools,
 	registerLabelTools,
@@ -22,8 +22,8 @@ var toolGroups = []func(*mcp.Server, *chief.Client){
 //
 // To add a tool group: write a registerXxxTools(s, c) in its own file and add
 // it to toolGroups.
-func newServer(c *chief.Client) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "chief-mcp", Version: buildVersion()}, nil)
+func newServer(c *chief.Client) *mcpsdk.Server {
+	s := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "chief-mcp", Version: buildVersion()}, nil)
 	for _, register := range toolGroups {
 		register(s, c)
 	}
@@ -41,9 +41,9 @@ type toolMeta struct {
 
 // addTool registers fn as an MCP tool, wrapping it with the shared result and
 // error plumbing.
-func addTool[Req, Resp any](s *mcp.Server, c *chief.Client, meta toolMeta, fn toolFunc[Req, Resp]) {
-	mcp.AddTool(s, &mcp.Tool{Name: meta.name, Description: meta.desc},
-		func(ctx context.Context, _ *mcp.CallToolRequest, req Req) (*mcp.CallToolResult, Resp, error) {
+func addTool[Req, Resp any](s *mcpsdk.Server, c *chief.Client, meta toolMeta, fn toolFunc[Req, Resp]) {
+	mcpsdk.AddTool(s, &mcpsdk.Tool{Name: meta.name, Description: meta.desc},
+		func(ctx context.Context, _ *mcpsdk.CallToolRequest, req Req) (*mcpsdk.CallToolResult, Resp, error) {
 			resp, summary, err := fn(ctx, c, req)
 			if err != nil {
 				var zero Resp
@@ -55,8 +55,8 @@ func addTool[Req, Resp any](s *mcp.Server, c *chief.Client, meta toolMeta, fn to
 
 // textResult wraps a summary string as a tool result; the SDK derives the
 // structured output from the typed return value separately.
-func textResult(summary string) *mcp.CallToolResult {
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: summary}},
+func textResult(summary string) *mcpsdk.CallToolResult {
+	return &mcpsdk.CallToolResult{
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: summary}},
 	}
 }

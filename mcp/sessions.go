@@ -1,11 +1,11 @@
-package main
+package mcp
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -34,7 +34,7 @@ type deleteSessionResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerSessionTools(s *mcp.Server, c *chief.Client) {
+func registerSessionTools(s *mcpsdk.Server, c *chief.Client) {
 	addTool(s, c, toolMeta{
 		name: toolListSessions,
 		desc: "List the caller's sessions in the project, newest first, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
