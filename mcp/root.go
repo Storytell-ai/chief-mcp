@@ -111,21 +111,11 @@ type clientContextKey struct{}
 // internet should route the MCP path alone and leave the probes to whatever
 // reaches the process directly.
 func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, path string) error {
-	streamable := mcpsdk.NewStreamableHTTPHandler(func(r *http.Request) *mcpsdk.Server {
-		c, _ := r.Context().Value(clientContextKey{}).(*chief.Client)
-		return newServer(c)
-	}, nil)
-
-	mux := http.NewServeMux()
-	mux.Handle(path, authMiddleware(flags, streamable))
-	mux.HandleFunc("GET /livez", healthOK)
-	mux.HandleFunc("GET /readyz", healthOK)
-
-	// A streamable response stays open for the life of the session, so a
-	// WriteTimeout would sever it mid-stream.
+	// A tool call runs as long as the upstream Chief API takes, so a WriteTimeout
+	// would sever it mid-response.
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           newHTTPHandler(flags, path),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
@@ -148,6 +138,25 @@ func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, path string) err
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
 	return serveErr
+}
+
+// newHTTPHandler mounts the auth-gated MCP endpoint and the health probes on
+// one mux.
+func newHTTPHandler(flags *resolvedFlags, path string) http.Handler {
+	// Stateless mode runs getServer on every request, so each request's own
+	// X-API-Key reaches the tools; stateful mode would pin the initialize-time
+	// client for the session's lifetime. Every tool here is plain
+	// request/response, so losing SSE costs nothing.
+	streamable := mcpsdk.NewStreamableHTTPHandler(func(r *http.Request) *mcpsdk.Server {
+		c, _ := r.Context().Value(clientContextKey{}).(*chief.Client)
+		return newServer(c)
+	}, &mcpsdk.StreamableHTTPOptions{Stateless: true})
+
+	mux := http.NewServeMux()
+	mux.Handle(path, authMiddleware(flags, streamable))
+	mux.HandleFunc("GET /livez", healthOK)
+	mux.HandleFunc("GET /readyz", healthOK)
+	return mux
 }
 
 func healthOK(w http.ResponseWriter, _ *http.Request) {
