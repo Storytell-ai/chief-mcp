@@ -41,7 +41,7 @@ func registerSessionTools(s *mcpsdk.Server, c *chief.Client) {
 	}, listSessions)
 	addTool(s, c, toolMeta{
 		name: toolGetSession,
-		desc: "Get a single session by ID, including its lifecycle state, full transcript, and live summary. state distinguishes a finished session (session.ended) from one still scheduled or running; summary and action_items carry the post-session writeup and stay empty until the session has ended.",
+		desc: "Get a single session by ID, including its lifecycle state, full transcript, and live summary. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups. summary and action_items are legacy and empty except on sessions recorded before the live summary existed.",
 	}, getSession)
 	addTool(s, c, toolMeta{
 		name: toolUpdateSession,
