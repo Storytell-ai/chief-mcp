@@ -41,7 +41,7 @@ func registerSessionTools(s *mcpsdk.Server, c *chief.Client) {
 	}, listSessions)
 	addTool(s, c, toolMeta{
 		name: toolGetSession,
-		desc: "Get a single session by ID, including its full transcript.",
+		desc: "Get a single session by ID, including its full transcript and live summary.",
 	}, getSession)
 	addTool(s, c, toolMeta{
 		name: toolUpdateSession,
