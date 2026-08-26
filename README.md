@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/Storytell-ai/chief-mcp)](https://github.com/Storytell-ai/chief-mcp/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-An MCP server for [Chief](https://chief.bot/). Manage assets, labels, actions, live sessions, skills, and memories in your Chief project — directly from any MCP client like Claude Desktop, Cursor, or Claude Code.
+An MCP server for [Chief](https://chief.bot/). Search your project's documents, and manage assets, labels, actions, live sessions, skills, and memories in your Chief project — directly from any MCP client like Claude Desktop, Cursor, or Claude Code.
 
 It is a single static Go binary built on the [Chief Go SDK](https://github.com/Storytell-ai/chief-go), and talks only to the Chief public REST API.
 
@@ -13,6 +13,7 @@ Connect to the hosted server at `https://mcp.chief.bot/mcp`, or run the binary y
 
 - **Chats** — Open a chat and send follow-up turns, optionally waiting for the response; list, get, rename, and delete chats; list, get, and delete individual messages; set a chat's visibility, manage a restricted chat's audience, and create, rotate, or revoke public share links.
 - **Assets** — Upload local files as assets, optionally waiting for ingest to finish; list, get, update, and delete them.
+- **Search** — Ask a question about the project's documents and get back the matching passages, best first. Searches the whole project by default, or narrow it to given assets, labels, views, or concepts. Requires a paid plan.
 - **Labels** — Create, list, get, update, and delete labels; attach and detach them on assets by name.
 - **Actions** — Create scheduled or event-triggered actions with optional email outcomes; list, get, update, delete, enable, and disable them.
 - **Live Sessions** — List, get (with the full transcript), update, and delete chat sessions.
