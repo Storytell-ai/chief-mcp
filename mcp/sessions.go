@@ -37,11 +37,11 @@ type deleteSessionResponse struct {
 func registerSessionTools(s *mcpsdk.Server, c *chief.Client) {
 	addTool(s, c, toolMeta{
 		name: toolListSessions,
-		desc: "List the caller's sessions in the project, newest first, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
+		desc: "List the caller's sessions in the project, newest first, cursor-paginated. Each item carries the session's lifecycle state, so finished sessions (state session.ended) can be picked out without fetching each one. Use after_id / before_id with the returned first_id / last_id to page.",
 	}, listSessions)
 	addTool(s, c, toolMeta{
 		name: toolGetSession,
-		desc: "Get a single session by ID, including its full transcript.",
+		desc: "Get a single session by ID, including its lifecycle state, full transcript, and live summary. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups.",
 	}, getSession)
 	addTool(s, c, toolMeta{
 		name: toolUpdateSession,
@@ -77,7 +77,7 @@ func getSession(ctx context.Context, c *chief.Client, req sessionIDRequest) (*ch
 	if err != nil {
 		return nil, "", fmt.Errorf("get session %q: %w", req.SessionID, err)
 	}
-	return session, fmt.Sprintf("session %s: %s (%d turn(s))", session.SessionID, session.Name, len(session.Turns)), nil
+	return session, fmt.Sprintf("session %s: %s (%s, %d turn(s))", session.SessionID, session.Name, session.State.State, len(session.Turns)), nil
 }
 
 func updateSession(ctx context.Context, c *chief.Client, req updateSessionRequest) (*chief.SessionResponse, string, error) {

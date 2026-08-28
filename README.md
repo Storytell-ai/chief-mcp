@@ -16,7 +16,7 @@ Connect to the hosted server at `https://mcp.chief.bot/mcp`, or run the binary y
 - **Search** — Ask a question about the project's documents and get back the matching passages, best first. Searches the whole project by default, or narrow it to given assets, labels, views, or concepts. Requires a paid plan.
 - **Labels** — Create, list, get, update, and delete labels; attach and detach them on assets by name.
 - **Actions** — Create scheduled or event-triggered actions with optional email outcomes; list, get, update, delete, enable, and disable them.
-- **Live Sessions** — List, get (with the full transcript), update, and delete chat sessions.
+- **Live Sessions** — List, get (with the lifecycle state, full transcript, and the live summary's decisions and to-dos), update, and delete chat sessions.
 - **Skills** — Create, list, get, update, and delete skills and personas; enable or disable them for the caller.
 - **Memories** — Create, list, get, update, and delete project memories.
 - **Projects** — List, create, and update projects; list members; create and revoke invitations. These tools need only the API key, not a project ID.
