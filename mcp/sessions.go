@@ -9,11 +9,10 @@ import (
 )
 
 const (
-	toolListSessions         = "list_sessions"
-	toolGetSession           = "get_session"
-	toolGetSessionTranscript = "get_session_transcript"
-	toolUpdateSession        = "update_session"
-	toolDeleteSession        = "delete_session"
+	toolListSessions  = "list_sessions"
+	toolGetSession    = "get_session"
+	toolUpdateSession = "update_session"
+	toolDeleteSession = "delete_session"
 )
 
 type listSessionsRequest struct {
@@ -24,13 +23,6 @@ type listSessionsRequest struct {
 
 type sessionIDRequest struct {
 	SessionID string `json:"session_id" jsonschema:"the session ID"`
-}
-
-type getSessionTranscriptRequest struct {
-	SessionID string `json:"session_id" jsonschema:"the session ID"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"turns per page, 1 to 100; defaults to 25"`
-	AfterID   string `json:"after_id,omitempty" jsonschema:"the previous page's last_id; returns the turns after that index"`
-	BeforeID  string `json:"before_id,omitempty" jsonschema:"a turn index; returns the turns just before it, still oldest first"`
 }
 
 type updateSessionRequest struct {
@@ -49,12 +41,8 @@ func registerSessionTools(s *mcpsdk.Server, c *chief.Client) {
 	}, listSessions)
 	addTool(s, c, toolMeta{
 		name: toolGetSession,
-		desc: "Get a single session by ID, including its lifecycle state, full transcript, and live summary. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups. For a long session, read the transcript page by page with get_session_transcript instead.",
+		desc: "Get a single session by ID, including its lifecycle state, full transcript, and live summary. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups.",
 	}, getSession)
-	addTool(s, c, toolMeta{
-		name: toolGetSessionTranscript,
-		desc: "Read one page of a session's transcript, oldest turn first; with no cursor it starts at the beginning of the meeting. Prefer this over get_session for a long session: get_session returns the metadata, live summary, and whole transcript in one result, while this walks the transcript in pages of up to 100 turns, each with its index, speaker label, text, and m:ss timecode when the recording has one. While has_more is true, pass the returned last_id as after_id to read the next page; before_id pages backward. Indices are stable once the session has ended (state session.ended); while it is still recording, turns merged from another device can shift them.",
-	}, getSessionTranscript)
 	addTool(s, c, toolMeta{
 		name: toolUpdateSession,
 		desc: "Patch a session's name and/or description. Omitted fields are left unchanged.",
@@ -90,28 +78,6 @@ func getSession(ctx context.Context, c *chief.Client, req sessionIDRequest) (*ch
 		return nil, "", fmt.Errorf("get session %q: %w", req.SessionID, err)
 	}
 	return session, fmt.Sprintf("session %s: %s (%s, %d turn(s))", session.SessionID, session.Name, session.State.State, len(session.Turns)), nil
-}
-
-func getSessionTranscript(ctx context.Context, c *chief.Client, req getSessionTranscriptRequest) (*chief.SessionTranscriptPage, string, error) {
-	var opts []chief.ListOption
-	if req.Limit > 0 {
-		opts = append(opts, chief.WithLimit(req.Limit))
-	}
-	if req.AfterID != "" {
-		opts = append(opts, chief.WithAfterID(req.AfterID))
-	}
-	if req.BeforeID != "" {
-		opts = append(opts, chief.WithBeforeID(req.BeforeID))
-	}
-
-	page, err := c.Sessions.GetTranscript(ctx, req.SessionID, opts...)
-	if err != nil {
-		return nil, "", fmt.Errorf("get session %q transcript: %w", req.SessionID, err)
-	}
-	if len(page.Data) == 0 {
-		return page, fmt.Sprintf("session %s: no turns (has_more %t)", req.SessionID, page.HasMore), nil
-	}
-	return page, fmt.Sprintf("session %s: turns %s–%s, %d turn(s) (has_more %t)", req.SessionID, page.FirstID, page.LastID, len(page.Data), page.HasMore), nil
 }
 
 func updateSession(ctx context.Context, c *chief.Client, req updateSessionRequest) (*chief.SessionResponse, string, error) {
