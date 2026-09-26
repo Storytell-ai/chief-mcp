@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	toolListSessions  = "list_sessions"
-	toolGetSession    = "get_session"
-	toolUpdateSession = "update_session"
-	toolDeleteSession = "delete_session"
+	toolListSessions         = "list_sessions"
+	toolGetSession           = "get_session"
+	toolGetSessionTranscript = "get_session_transcript"
+	toolUpdateSession        = "update_session"
+	toolDeleteSession        = "delete_session"
 )
 
 type listSessionsRequest struct {
@@ -23,6 +24,13 @@ type listSessionsRequest struct {
 
 type sessionIDRequest struct {
 	SessionID string `json:"session_id" jsonschema:"the session ID"`
+}
+
+type getSessionTranscriptRequest struct {
+	SessionID string `json:"session_id" jsonschema:"the session ID"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"turns per page, 1 to 100; defaults to 25"`
+	AfterID   string `json:"after_id,omitempty" jsonschema:"the previous page's last_id; returns the turns after that index"`
+	BeforeID  string `json:"before_id,omitempty" jsonschema:"a turn index, or the session's turn_count for the most recent turns; returns the turns just before it, still oldest first"`
 }
 
 type updateSessionRequest struct {
@@ -41,8 +49,12 @@ func registerSessionTools(s *mcpsdk.Server, c *chief.Client) {
 	}, listSessions)
 	addTool(s, c, toolMeta{
 		name: toolGetSession,
-		desc: "Get a single session by ID, including its lifecycle state, full transcript, and live summary. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups.",
+		desc: "Get a single session by ID: its lifecycle state, live summary, and turn_count. Use it for what a session decided and what came out of it; for what was actually said (quotes, who said what, when), use get_session_transcript. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups. The turns field is deprecated and will be removed; read the transcript with get_session_transcript.",
 	}, getSession)
+	addTool(s, c, toolMeta{
+		name: toolGetSessionTranscript,
+		desc: "Read one page of a session's transcript, oldest turn first: the words actually spoken, each turn with its index, speaker label, text, and m:ss timecode when the recording has one. Use it for quotes, who said what, or when something came up; use get_session for the outcome (live summary, todos). With no cursor it starts at the beginning of the meeting; before_id set to the session's turn_count (from get_session) returns the most recent turns. While has_more is true, pass last_id as after_id to read forward, or first_id as before_id to read backward. Pages hold up to 100 turns. Indices are stable once the session has ended (state session.ended); while it is still recording, turns merged from another device can shift them.",
+	}, getSessionTranscript)
 	addTool(s, c, toolMeta{
 		name: toolUpdateSession,
 		desc: "Patch a session's name and/or description. Omitted fields are left unchanged.",
@@ -77,7 +89,29 @@ func getSession(ctx context.Context, c *chief.Client, req sessionIDRequest) (*ch
 	if err != nil {
 		return nil, "", fmt.Errorf("get session %q: %w", req.SessionID, err)
 	}
-	return session, fmt.Sprintf("session %s: %s (%s, %d turn(s))", session.SessionID, session.Name, session.State.State, len(session.Turns)), nil
+	return session, fmt.Sprintf("session %s: %s (%s, %d turn(s))", session.SessionID, session.Name, session.State.State, session.TurnCount), nil
+}
+
+func getSessionTranscript(ctx context.Context, c *chief.Client, req getSessionTranscriptRequest) (*chief.SessionTranscriptPage, string, error) {
+	var opts []chief.ListOption
+	if req.Limit > 0 {
+		opts = append(opts, chief.WithLimit(req.Limit))
+	}
+	if req.AfterID != "" {
+		opts = append(opts, chief.WithAfterID(req.AfterID))
+	}
+	if req.BeforeID != "" {
+		opts = append(opts, chief.WithBeforeID(req.BeforeID))
+	}
+
+	page, err := c.Sessions.GetTranscript(ctx, req.SessionID, opts...)
+	if err != nil {
+		return nil, "", fmt.Errorf("get session %q transcript: %w", req.SessionID, err)
+	}
+	if len(page.Data) == 0 {
+		return page, fmt.Sprintf("session %s: no turns (has_more %t)", req.SessionID, page.HasMore), nil
+	}
+	return page, fmt.Sprintf("session %s: turns %s–%s, %d turn(s) (has_more %t)", req.SessionID, page.FirstID, page.LastID, len(page.Data), page.HasMore), nil
 }
 
 func updateSession(ctx context.Context, c *chief.Client, req updateSessionRequest) (*chief.SessionResponse, string, error) {
