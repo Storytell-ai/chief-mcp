@@ -30,7 +30,7 @@ type getSessionTranscriptRequest struct {
 	SessionID string `json:"session_id" jsonschema:"the session ID"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"turns per page, 1 to 100; defaults to 25"`
 	AfterID   string `json:"after_id,omitempty" jsonschema:"the previous page's last_id; returns the turns after that index"`
-	BeforeID  string `json:"before_id,omitempty" jsonschema:"a turn index; returns the turns just before it, still oldest first"`
+	BeforeID  string `json:"before_id,omitempty" jsonschema:"a turn index, or the session's turn_count for the most recent turns; returns the turns just before it, still oldest first"`
 }
 
 type updateSessionRequest struct {
@@ -49,11 +49,11 @@ func registerSessionTools(s *mcpsdk.Server, c *chief.Client) {
 	}, listSessions)
 	addTool(s, c, toolMeta{
 		name: toolGetSession,
-		desc: "Get a single session by ID, including its lifecycle state, full transcript, and live summary. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups. For a long session, read the transcript page by page with get_session_transcript instead.",
+		desc: "Get a single session by ID: its lifecycle state, live summary, and turn_count. Use it for what a session decided and what came out of it; for what was actually said (quotes, who said what, when), use get_session_transcript. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups. The turns field is deprecated and will be removed; read the transcript with get_session_transcript.",
 	}, getSession)
 	addTool(s, c, toolMeta{
 		name: toolGetSessionTranscript,
-		desc: "Read one page of a session's transcript, oldest turn first; with no cursor it starts at the beginning of the meeting. Prefer this over get_session for a long session: get_session returns the metadata, live summary, and whole transcript in one result, while this walks the transcript in pages of up to 100 turns, each with its index, speaker label, text, and m:ss timecode when the recording has one. While has_more is true, pass the returned last_id as after_id to read the next page; before_id pages backward. Indices are stable once the session has ended (state session.ended); while it is still recording, turns merged from another device can shift them.",
+		desc: "Read one page of a session's transcript, oldest turn first: the words actually spoken, each turn with its index, speaker label, text, and m:ss timecode when the recording has one. Use it for quotes, who said what, or when something came up; use get_session for the outcome (live summary, todos). With no cursor it starts at the beginning of the meeting; before_id set to the session's turn_count (from get_session) returns the most recent turns. While has_more is true, pass last_id as after_id to read forward, or first_id as before_id to read backward. Pages hold up to 100 turns. Indices are stable once the session has ended (state session.ended); while it is still recording, turns merged from another device can shift them.",
 	}, getSessionTranscript)
 	addTool(s, c, toolMeta{
 		name: toolUpdateSession,
@@ -89,7 +89,7 @@ func getSession(ctx context.Context, c *chief.Client, req sessionIDRequest) (*ch
 	if err != nil {
 		return nil, "", fmt.Errorf("get session %q: %w", req.SessionID, err)
 	}
-	return session, fmt.Sprintf("session %s: %s (%s, %d turn(s))", session.SessionID, session.Name, session.State.State, len(session.Turns)), nil
+	return session, fmt.Sprintf("session %s: %s (%s, %d turn(s))", session.SessionID, session.Name, session.State.State, session.TurnCount), nil
 }
 
 func getSessionTranscript(ctx context.Context, c *chief.Client, req getSessionTranscriptRequest) (*chief.SessionTranscriptPage, string, error) {
