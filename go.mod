@@ -7,6 +7,8 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 )
 
+replace github.com/Storytell-ai/chief-go => ../chief-go
+
 require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect

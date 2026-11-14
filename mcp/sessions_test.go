@@ -30,7 +30,7 @@ func TestGetSessionTranscriptPagesThroughTheAPI(t *testing.T) {
 	}))
 	defer chiefAPI.Close()
 
-	mcpServer := httptest.NewServer(newHTTPHandler(&resolvedFlags{baseURL: chiefAPI.URL}, "/mcp"))
+	mcpServer := httptest.NewServer(newHTTPHandler(&resolvedFlags{baseURL: chiefAPI.URL, project: "project_a"}, "/mcp", ""))
 	defer mcpServer.Close()
 	mcpURL := mcpServer.URL + "/mcp"
 
