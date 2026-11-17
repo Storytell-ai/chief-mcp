@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Storytell-ai/chief-go/chief"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -198,11 +199,38 @@ func TestProjectIDOverridesConnectionProject(t *testing.T) {
 	}
 }
 
-// TestProjectScopedToolWithoutProject checks the error a model sees when
-// neither the connection nor the call names a project: it must say how to get
-// one.
-func TestProjectScopedToolWithoutProject(t *testing.T) {
+// TestProjectRequiredWithoutConnectionProject pins what a model sees on a
+// connection without a project, which is every OAuth connection: project tools
+// list project_id as required and point to list_projects, and a call without
+// one never reaches the API.
+func TestProjectRequiredWithoutConnectionProject(t *testing.T) {
 	t.Setenv("CHIEF_PROJECT_ID", "")
+
+	tools := listHTTPTools(t, `["read"]`)
+	i := slices.IndexFunc(tools, func(tool *mcpsdk.Tool) bool { return tool.Name == toolListSessions })
+	if i < 0 {
+		t.Fatalf("%s not listed", toolListSessions)
+	}
+	raw, err := json.Marshal(tools[i].InputSchema)
+	if err != nil {
+		t.Fatalf("encode input schema: %v", err)
+	}
+	var schema struct {
+		Required   []string `json:"required"`
+		Properties map[string]struct {
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("decode input schema %s: %v", raw, err)
+	}
+	if !slices.Contains(schema.Required, "project_id") {
+		t.Errorf("%s schema requires %v, want project_id among them", toolListSessions, schema.Required)
+	}
+	if desc := schema.Properties["project_id"].Description; !strings.Contains(desc, toolListProjects) {
+		t.Errorf("project_id description %q should point to %s", desc, toolListProjects)
+	}
+
 	var mu sync.Mutex
 	called := false
 	chiefAPI := fakeChiefAPI(t, `["read"]`, func(w http.ResponseWriter, _ *http.Request) {
@@ -214,24 +242,8 @@ func TestProjectScopedToolWithoutProject(t *testing.T) {
 	mcpServer := httptest.NewServer(newHTTPHandler(&resolvedFlags{baseURL: chiefAPI.URL}, "/mcp", ""))
 	defer mcpServer.Close()
 
-	raw := callTool(t, mcpServer.URL+"/mcp", toolListSessions, `{}`)
-	var rpc struct {
-		Result struct {
-			IsError bool `json:"isError"`
-			Content []struct {
-				Text string `json:"text"`
-			} `json:"content"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(raw, &rpc); err != nil {
-		t.Fatalf("decode tools/call response %s: %v", raw, err)
-	}
-	if !rpc.Result.IsError || len(rpc.Result.Content) == 0 {
-		t.Fatalf("want an error result, got %s", raw)
-	}
-	if text := rpc.Result.Content[0].Text; !strings.Contains(text, "project_id") || !strings.Contains(text, toolListProjects) {
-		t.Errorf("error %q should name project_id and %s", text, toolListProjects)
-	}
+	callTool(t, mcpServer.URL+"/mcp", toolListSessions, `{}`)
+	callTool(t, mcpServer.URL+"/mcp", toolListSessions, `{"project_id":""}`)
 	mu.Lock()
 	defer mu.Unlock()
 	if called {
@@ -273,7 +285,11 @@ func hasTool(tools []*mcpsdk.Tool, name string) bool {
 func listStdioTools(t *testing.T) []*mcpsdk.Tool {
 	t.Helper()
 	serverTransport, clientTransport := mcpsdk.NewInMemoryTransports()
-	ss, err := newStdioServer(nil).Connect(t.Context(), serverTransport, nil)
+	c, err := chief.New(chief.WithAPIKey("key-a"))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	ss, err := newStdioServer(c).Connect(t.Context(), serverTransport, nil)
 	if err != nil {
 		t.Fatalf("connect server: %v", err)
 	}

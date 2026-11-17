@@ -5,9 +5,10 @@ package mcp
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
+	"github.com/google/jsonschema-go/jsonschema"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -76,7 +77,9 @@ type toolMeta struct {
 }
 
 // projectInput is embedded in the request of every tool whose API route needs
-// a project. Its project_id overrides the connection's project for that call.
+// a project. Its project_id overrides the connection's project for that call;
+// on a connection without one, which is every OAuth connection, the tool's
+// schema makes it required.
 type projectInput struct {
 	ProjectID string `json:"project_id,omitempty" jsonschema:"the project to act in; defaults to the connection's project. list_projects returns the IDs"`
 }
@@ -86,8 +89,6 @@ func (p projectInput) projectOverride() string { return p.ProjectID }
 type projectScoped interface {
 	projectOverride() string
 }
-
-var errNoProject = errors.New("this tool needs a project: call list_projects for the IDs this connection can reach and pass one as project_id")
 
 // addTool registers fn as an MCP tool, wrapping it with the shared result and
 // error plumbing. A write tool is skipped when s.access is toolRead.
@@ -105,6 +106,19 @@ func addTool[Req, Resp any](s *toolServer, meta toolMeta, fn toolFunc[Req, Resp]
 		annotations.DestructiveHint = new(true)
 	}
 	tool := &mcpsdk.Tool{Name: meta.name, Title: meta.title, Description: meta.desc, Annotations: annotations}
+	// The SDK validates arguments against the schema, so a call without a
+	// project is refused before it reaches the handler.
+	if _, scoped := any(*new(Req)).(projectScoped); scoped && s.client.ProjectID() == "" {
+		schema, err := jsonschema.For[Req](&jsonschema.ForOptions{})
+		if err != nil {
+			panic(fmt.Errorf("infer %s input schema: %w", meta.name, err))
+		}
+		project := schema.Properties["project_id"]
+		project.Description = "the project to act in; list_projects returns the IDs"
+		project.MinLength = jsonschema.Ptr(1)
+		schema.Required = append(schema.Required, "project_id")
+		tool.InputSchema = schema
+	}
 	mcpsdk.AddTool(s.mcp, tool,
 		func(ctx context.Context, _ *mcpsdk.CallToolRequest, req Req) (*mcpsdk.CallToolResult, Resp, error) {
 			var zero Resp
@@ -112,8 +126,6 @@ func addTool[Req, Resp any](s *toolServer, meta toolMeta, fn toolFunc[Req, Resp]
 			if scoped, ok := any(req).(projectScoped); ok {
 				if project := scoped.projectOverride(); project != "" {
 					c = c.ForProject(project)
-				} else if c.ProjectID() == "" {
-					return nil, zero, errNoProject
 				}
 			}
 			resp, summary, err := fn(ctx, c, req)
