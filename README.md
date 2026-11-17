@@ -12,7 +12,7 @@ Connect to the hosted server at `https://mcp.chief.bot/mcp`, or run the binary y
 ## Features
 
 - **Chats** — Open a chat and send follow-up turns, optionally waiting for the response; list, get, rename, and delete chats; list, get, and delete individual messages; set a chat's visibility, manage a restricted chat's audience, and create, rotate, or revoke public share links.
-- **Assets** — Upload local files as assets, optionally waiting for ingest to finish; list, get, update, and delete them.
+- **Assets** — Upload local files as assets (stdio only), optionally waiting for ingest to finish; list, get, update, and delete them.
 - **Search** — Ask a question about the project's documents and get back the matching passages, best first. Searches the whole project by default, or narrow it to given assets, labels, views, or concepts. Requires a paid plan.
 - **Labels** — Create, list, get, update, and delete labels; attach and detach them on assets by name.
 - **Actions** — Create scheduled or event-triggered actions with optional email outcomes; list, get, update, delete, enable, and disable them.
@@ -25,9 +25,27 @@ Connect to the hosted server at `https://mcp.chief.bot/mcp`, or run the binary y
 
 Chief hosts the server at `https://mcp.chief.bot/mcp`. Nothing to install, no local process to run — which suits web-based clients and anything that can reach a Streamable HTTP endpoint.
 
-Authentication is a Chief Personal Access Token sent with every request; there is no browser OAuth flow. The hosted server sets no default project, so project-scoped tools also need an `X-Project-Id` header. The Projects tools work with the token alone.
+You sign in with your Chief account. When you connect, your client opens Chief's sign-in page and then a consent screen, where you pick one organization and choose whether the client can create and change data. A read-only connection doesn't list the write tools. Project-scoped tools take a `project_id` argument, and `list_projects` returns the projects in the connected organization. Manage and revoke connections in Chief under Settings › Connected apps. The full guide is at [chief.bot/mcp](https://chief.bot/mcp).
+
+The hosted server doesn't offer `upload_file`: it reads a path on the machine running the server, so only the stdio transport registers it.
+
+### Claude
+
+Open Settings › Connectors › Add custom connector and enter `https://mcp.chief.bot/mcp`, then select Connect and sign in. Once Chief is listed in Claude's connector directory, you can add it from there instead.
 
 ### Claude Code
+
+```bash
+claude mcp add --transport http chief https://mcp.chief.bot/mcp
+```
+
+Then run `/mcp` in Claude Code, select `chief`, and authenticate.
+
+### With a Personal Access Token
+
+Scripts and clients that can't sign in through a browser send a Chief Personal Access Token with every request instead. Token requests have no default project, so project-scoped tools also need an `X-Project-Id` header. The Projects tools work with the token alone.
+
+#### Claude Code
 
 ```bash
 claude mcp add chief --transport http https://mcp.chief.bot/mcp \
@@ -35,7 +53,7 @@ claude mcp add chief --transport http https://mcp.chief.bot/mcp \
   --header "X-Project-Id: <project-id>"
 ```
 
-### Cursor
+#### Cursor
 
 Open the command palette and choose "Cursor Settings" > "MCP" > "Add new global MCP server".
 
@@ -83,7 +101,7 @@ task install   # builds and installs chief-mcp into your GOBIN
 
 ## Usage
 
-The server has two transports, selected by subcommand: **stdio** for a local agent, and **http** for remote agents. Run `chief-mcp` with no subcommand to print usage.
+The server has two transports, selected by subcommand: **stdio** for a local agent, and **http** for remote agents. Run `chief-mcp` with no subcommand to print usage. `upload_file` is registered on stdio only, since it reads files from the machine running the server.
 
 ### Quick Setup
 
@@ -214,9 +232,10 @@ The `http` transport adds:
 
 - `--addr`: address to listen on (default `:8080`)
 - `--path`: path to mount the MCP endpoint on (default `/mcp`)
+- `--auth-url`: the Chief auth service URL; a 401 points clients to its protected resource metadata so they can sign in (env `CHIEF_AUTH_URL`)
 
 > [!NOTE]
-> In HTTP mode the server authenticates each request from its headers, so `--api-key` applies to stdio only. `--project` sets the default project for requests that omit `X-Project-Id`.
+> In HTTP mode the server authenticates each request from its headers, so `--api-key` applies to stdio only. `--project` sets the default project for requests that omit `X-Project-Id`; a project-scoped tool's `project_id` argument overrides both. A read-only token gets only the read tools.
 
 ## Local Development
 

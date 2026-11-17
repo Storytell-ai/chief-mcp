@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -20,9 +19,10 @@ const (
 const defaultUploadTimeout = 360 * time.Second
 
 type uploadFileRequest struct {
+	projectInput
 	Path           string `json:"path" jsonschema:"absolute path to a local file, resolved on the host running this MCP server"`
 	WaitForReady   bool   `json:"wait_for_ready,omitempty" jsonschema:"block until the asset finishes ingesting before returning"`
-	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"seconds to wait when wait_for_ready is set; defaults to 120"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"seconds to wait when wait_for_ready is set; defaults to 360"`
 }
 
 type uploadFileResponse struct {
@@ -35,22 +35,26 @@ type uploadFileResponse struct {
 }
 
 type listAssetsRequest struct {
+	projectInput
 	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of assets to return; the server clamps to its own bounds"`
 	AfterID  string `json:"after_id,omitempty" jsonschema:"page forward from this asset ID"`
 	BeforeID string `json:"before_id,omitempty" jsonschema:"page backward from this asset ID"`
 }
 
 type getAssetRequest struct {
+	projectInput
 	AssetID string `json:"asset_id" jsonschema:"the asset ID to fetch"`
 }
 
 type updateAssetRequest struct {
+	projectInput
 	AssetID     string  `json:"asset_id" jsonschema:"the asset to update"`
 	Name        *string `json:"name,omitempty" jsonschema:"new display name; omit to leave unchanged"`
 	Description *string `json:"description,omitempty" jsonschema:"new description; omit to leave unchanged"`
 }
 
 type deleteAssetRequest struct {
+	projectInput
 	AssetID string `json:"asset_id" jsonschema:"the asset to delete"`
 }
 
@@ -58,26 +62,43 @@ type deleteAssetResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerAssetTools(s *mcpsdk.Server, c *chief.Client) {
-	addTool(s, c, toolMeta{
-		name: toolUploadFile,
-		desc: "Upload a local file as an asset. The path is resolved on the host running this MCP server, so this is intended for local stdio usage; uploading inline content over remote HTTP is not yet supported. Returns the asset and whether its content already existed (a dedup hit).",
+// registerUploadTool is for stdio only. upload_file opens a path on this
+// process's filesystem, which is the caller's own machine only on stdio; on the
+// hosted HTTP transport it would read the server's files, its service account
+// token included.
+func registerUploadTool(s *toolServer) {
+	addTool(s, toolMeta{
+		name:   toolUploadFile,
+		title:  "Upload File",
+		access: toolWrite,
+		desc:   "Upload a file from the machine running this MCP server as an asset. Returns the asset and whether its content already existed (a dedup hit).",
 	}, uploadFile)
-	addTool(s, c, toolMeta{
-		name: toolListAssets,
-		desc: "List assets in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
+}
+
+func registerAssetTools(s *toolServer) {
+	addTool(s, toolMeta{
+		name:   toolListAssets,
+		title:  "List Assets",
+		access: toolRead,
+		desc:   "List assets in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
 	}, listAssets)
-	addTool(s, c, toolMeta{
-		name: toolGetAsset,
-		desc: "Get a single asset by ID, including its current ingest status.",
+	addTool(s, toolMeta{
+		name:   toolGetAsset,
+		title:  "Get Asset",
+		access: toolRead,
+		desc:   "Get a single asset by ID, including its current ingest status.",
 	}, getAsset)
-	addTool(s, c, toolMeta{
-		name: toolUpdateAsset,
-		desc: "Patch an asset's name and/or description. Omitted fields are left unchanged.",
+	addTool(s, toolMeta{
+		name:   toolUpdateAsset,
+		title:  "Update Asset",
+		access: toolWrite,
+		desc:   "Patch an asset's name and/or description. Omitted fields are left unchanged.",
 	}, updateAsset)
-	addTool(s, c, toolMeta{
-		name: toolDeleteAsset,
-		desc: "Delete an asset permanently.",
+	addTool(s, toolMeta{
+		name:   toolDeleteAsset,
+		title:  "Delete Asset",
+		access: toolWrite,
+		desc:   "Delete an asset permanently.",
 	}, deleteAsset)
 }
 

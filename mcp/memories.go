@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -16,17 +15,25 @@ const (
 	toolDeleteMemory = "delete_memory"
 )
 
+type createMemoryRequest struct {
+	projectInput
+	chief.CreateMemoryRequest
+}
+
 type listMemoriesRequest struct {
+	projectInput
 	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of memories to return; the server clamps to its own bounds"`
 	AfterID  string `json:"after_id,omitempty" jsonschema:"page forward from this memory ID"`
 	BeforeID string `json:"before_id,omitempty" jsonschema:"page backward from this memory ID"`
 }
 
 type memoryIDRequest struct {
+	projectInput
 	MemoryID string `json:"memory_id" jsonschema:"the memory ID"`
 }
 
 type updateMemoryRequest struct {
+	projectInput
 	MemoryID string                    `json:"memory_id" jsonschema:"the memory to update"`
 	Memory   chief.UpdateMemoryRequest `json:"memory" jsonschema:"content is replaced; category and importance are optional patches. category is one of: identity, preference, fact, context, instruction"`
 }
@@ -35,31 +42,41 @@ type deleteMemoryResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerMemoryTools(s *mcpsdk.Server, c *chief.Client) {
-	addTool(s, c, toolMeta{
-		name: toolCreateMemory,
-		desc: "Store a memory in the project. category is one of: identity, preference, fact, context, instruction. importance is an integer. scope is optional and, for now, only accepts \"project\".",
+func registerMemoryTools(s *toolServer) {
+	addTool(s, toolMeta{
+		name:   toolCreateMemory,
+		title:  "Create Memory",
+		access: toolWrite,
+		desc:   "Store a memory in the project. category is one of: identity, preference, fact, context, instruction. importance is an integer. scope is optional and, for now, only accepts \"project\".",
 	}, createMemory)
-	addTool(s, c, toolMeta{
-		name: toolListMemories,
-		desc: "List the memories in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
+	addTool(s, toolMeta{
+		name:   toolListMemories,
+		title:  "List Memories",
+		access: toolRead,
+		desc:   "List the memories in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
 	}, listMemories)
-	addTool(s, c, toolMeta{
-		name: toolGetMemory,
-		desc: "Get a single memory by ID.",
+	addTool(s, toolMeta{
+		name:   toolGetMemory,
+		title:  "Get Memory",
+		access: toolRead,
+		desc:   "Get a single memory by ID.",
 	}, getMemory)
-	addTool(s, c, toolMeta{
-		name: toolUpdateMemory,
-		desc: "Update a memory. content is replaced; category and importance are optional patches. category is one of: identity, preference, fact, context, instruction.",
+	addTool(s, toolMeta{
+		name:   toolUpdateMemory,
+		title:  "Update Memory",
+		access: toolWrite,
+		desc:   "Update a memory. content is replaced; category and importance are optional patches. category is one of: identity, preference, fact, context, instruction.",
 	}, updateMemory)
-	addTool(s, c, toolMeta{
-		name: toolDeleteMemory,
-		desc: "Delete a memory permanently.",
+	addTool(s, toolMeta{
+		name:   toolDeleteMemory,
+		title:  "Delete Memory",
+		access: toolWrite,
+		desc:   "Delete a memory permanently.",
 	}, deleteMemory)
 }
 
-func createMemory(ctx context.Context, c *chief.Client, req chief.CreateMemoryRequest) (*chief.MemoryResponse, string, error) {
-	memory, err := c.Memories.Create(ctx, &req)
+func createMemory(ctx context.Context, c *chief.Client, req createMemoryRequest) (*chief.MemoryResponse, string, error) {
+	memory, err := c.Memories.Create(ctx, &req.CreateMemoryRequest)
 	if err != nil {
 		return nil, "", fmt.Errorf("create memory: %w", err)
 	}

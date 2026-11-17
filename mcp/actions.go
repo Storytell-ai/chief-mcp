@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -18,17 +17,25 @@ const (
 	toolDisableAction = "disable_action"
 )
 
+type createActionRequest struct {
+	projectInput
+	chief.ActionRequest
+}
+
 type listActionsRequest struct {
+	projectInput
 	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of actions to return; the server clamps to its own bounds"`
 	AfterID  string `json:"after_id,omitempty" jsonschema:"page forward from this action ID"`
 	BeforeID string `json:"before_id,omitempty" jsonschema:"page backward from this action ID"`
 }
 
 type actionIDRequest struct {
+	projectInput
 	ActionID string `json:"action_id" jsonschema:"the action ID"`
 }
 
 type updateActionRequest struct {
+	projectInput
 	ActionID string              `json:"action_id" jsonschema:"the action to update"`
 	Action   chief.ActionRequest `json:"action" jsonschema:"the full replacement action body; omitted schedule, trigger, scope, or email sections are cleared"`
 }
@@ -37,39 +44,56 @@ type deleteActionResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerActionTools(s *mcpsdk.Server, c *chief.Client) {
-	addTool(s, c, toolMeta{
-		name: toolCreateAction,
-		desc: "Create an action in the project. Prompt is plain text. Provide a schedule for recurring runs or a trigger for event-driven runs. An action always starts enabled.",
+func registerActionTools(s *toolServer) {
+	addTool(s, toolMeta{
+		name:      toolCreateAction,
+		title:     "Create Action",
+		access:    toolWrite,
+		openWorld: true,
+		desc:      "Create an action in the project. Prompt is plain text. Provide a schedule for recurring runs or a trigger for event-driven runs. An action always starts enabled.",
 	}, createAction)
-	addTool(s, c, toolMeta{
-		name: toolListActions,
-		desc: "List the actions visible in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
+	addTool(s, toolMeta{
+		name:   toolListActions,
+		title:  "List Actions",
+		access: toolRead,
+		desc:   "List the actions visible in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
 	}, listActions)
-	addTool(s, c, toolMeta{
-		name: toolGetAction,
-		desc: "Get a single action by ID, including its full schedule, trigger, scope, and email configuration.",
+	addTool(s, toolMeta{
+		name:   toolGetAction,
+		title:  "Get Action",
+		access: toolRead,
+		desc:   "Get a single action by ID, including its full schedule, trigger, scope, and email configuration.",
 	}, getAction)
-	addTool(s, c, toolMeta{
-		name: toolUpdateAction,
-		desc: "Replace an action's configuration. The body is a full replacement: any schedule, trigger, scope, or email section omitted from action is cleared.",
+	addTool(s, toolMeta{
+		name:      toolUpdateAction,
+		title:     "Update Action",
+		access:    toolWrite,
+		openWorld: true,
+		desc:      "Replace an action's configuration. The body is a full replacement: any schedule, trigger, scope, or email section omitted from action is cleared.",
 	}, updateAction)
-	addTool(s, c, toolMeta{
-		name: toolDeleteAction,
-		desc: "Delete an action permanently.",
+	addTool(s, toolMeta{
+		name:   toolDeleteAction,
+		title:  "Delete Action",
+		access: toolWrite,
+		desc:   "Delete an action permanently.",
 	}, deleteAction)
-	addTool(s, c, toolMeta{
-		name: toolEnableAction,
-		desc: "Enable an action so it runs on its schedule or trigger.",
+	addTool(s, toolMeta{
+		name:      toolEnableAction,
+		title:     "Enable Action",
+		access:    toolWrite,
+		openWorld: true,
+		desc:      "Enable an action so it runs on its schedule or trigger.",
 	}, enableAction)
-	addTool(s, c, toolMeta{
-		name: toolDisableAction,
-		desc: "Disable an action without deleting it, pausing its schedule or trigger.",
+	addTool(s, toolMeta{
+		name:   toolDisableAction,
+		title:  "Disable Action",
+		access: toolWrite,
+		desc:   "Disable an action without deleting it, pausing its schedule or trigger.",
 	}, disableAction)
 }
 
-func createAction(ctx context.Context, c *chief.Client, req chief.ActionRequest) (*chief.ActionResponse, string, error) {
-	action, err := c.Actions.Create(ctx, &req)
+func createAction(ctx context.Context, c *chief.Client, req createActionRequest) (*chief.ActionResponse, string, error) {
+	action, err := c.Actions.Create(ctx, &req.ActionRequest)
 	if err != nil {
 		return nil, "", fmt.Errorf("create action %q: %w", req.Name, err)
 	}

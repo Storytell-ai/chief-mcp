@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -17,16 +16,19 @@ const (
 )
 
 type listSessionsRequest struct {
+	projectInput
 	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of sessions to return; the server clamps to its own bounds"`
 	AfterID  string `json:"after_id,omitempty" jsonschema:"page forward from this session ID"`
 	BeforeID string `json:"before_id,omitempty" jsonschema:"page backward from this session ID"`
 }
 
 type sessionIDRequest struct {
+	projectInput
 	SessionID string `json:"session_id" jsonschema:"the session ID"`
 }
 
 type getSessionTranscriptRequest struct {
+	projectInput
 	SessionID string `json:"session_id" jsonschema:"the session ID"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"turns per page, 1 to 100; defaults to 25"`
 	AfterID   string `json:"after_id,omitempty" jsonschema:"the previous page's last_id; returns the turns after that index"`
@@ -34,6 +36,7 @@ type getSessionTranscriptRequest struct {
 }
 
 type updateSessionRequest struct {
+	projectInput
 	SessionID string                     `json:"session_id" jsonschema:"the session to update"`
 	Session   chief.UpdateSessionRequest `json:"session" jsonschema:"name and/or description patch; omitted fields are left unchanged"`
 }
@@ -42,26 +45,36 @@ type deleteSessionResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerSessionTools(s *mcpsdk.Server, c *chief.Client) {
-	addTool(s, c, toolMeta{
-		name: toolListSessions,
-		desc: "List the caller's sessions in the project, newest first, cursor-paginated. Each item carries the session's lifecycle state, so finished sessions (state session.ended) can be picked out without fetching each one. Use after_id / before_id with the returned first_id / last_id to page.",
+func registerSessionTools(s *toolServer) {
+	addTool(s, toolMeta{
+		name:   toolListSessions,
+		title:  "List Live Sessions",
+		access: toolRead,
+		desc:   "List the caller's sessions in the project, newest first, cursor-paginated. Each item carries the session's lifecycle state, so finished sessions (state session.ended) can be picked out without fetching each one. Use after_id / before_id with the returned first_id / last_id to page.",
 	}, listSessions)
-	addTool(s, c, toolMeta{
-		name: toolGetSession,
-		desc: "Get a single session by ID: its lifecycle state, live summary, and turn_count. Use it for what a session decided and what came out of it; for what was actually said (quotes, who said what, when), use get_session_transcript. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups. The turns field is deprecated and will be removed; read the transcript with get_session_transcript.",
+	addTool(s, toolMeta{
+		name:   toolGetSession,
+		title:  "Get Live Session",
+		access: toolRead,
+		desc:   "Get a single session by ID: its lifecycle state, live summary, and turn_count. state distinguishes a finished session (session.ended) from one still scheduled or running. The live summary is the canonical record of what the session decided: its items with kind todo are the follow-ups. What was actually said is in the transcript (get_session_transcript); the turns field here is deprecated and will be removed.",
 	}, getSession)
-	addTool(s, c, toolMeta{
-		name: toolGetSessionTranscript,
-		desc: "Read one page of a session's transcript, oldest turn first: the words actually spoken, each turn with its index, speaker label, text, and m:ss timecode when the recording has one. Use it for quotes, who said what, or when something came up; use get_session for the outcome (live summary, todos). With no cursor it starts at the beginning of the meeting; before_id set to the session's turn_count (from get_session) returns the most recent turns. While has_more is true, pass last_id as after_id to read forward, or first_id as before_id to read backward. Pages hold up to 100 turns. Indices are stable once the session has ended (state session.ended); while it is still recording, turns merged from another device can shift them.",
+	addTool(s, toolMeta{
+		name:   toolGetSessionTranscript,
+		title:  "Get Live Session Transcript",
+		access: toolRead,
+		desc:   "Read one page of a session's transcript, oldest turn first: the words actually spoken, each turn with its index, speaker label, text, and m:ss timecode when the recording has one. The session's outcome (live summary, todos) is in get_session, not here. With no cursor it starts at the beginning of the meeting; before_id set to the session's turn_count (from get_session) returns the most recent turns. While has_more is true, pass last_id as after_id to read forward, or first_id as before_id to read backward. Pages hold up to 100 turns. Indices are stable once the session has ended (state session.ended); while it is still recording, turns merged from another device can shift them.",
 	}, getSessionTranscript)
-	addTool(s, c, toolMeta{
-		name: toolUpdateSession,
-		desc: "Patch a session's name and/or description. Omitted fields are left unchanged.",
+	addTool(s, toolMeta{
+		name:   toolUpdateSession,
+		title:  "Update Live Session",
+		access: toolWrite,
+		desc:   "Patch a session's name and/or description. Omitted fields are left unchanged.",
 	}, updateSession)
-	addTool(s, c, toolMeta{
-		name: toolDeleteSession,
-		desc: "Delete a session permanently.",
+	addTool(s, toolMeta{
+		name:   toolDeleteSession,
+		title:  "Delete Live Session",
+		access: toolWrite,
+		desc:   "Delete a session permanently.",
 	}, deleteSession)
 }
 

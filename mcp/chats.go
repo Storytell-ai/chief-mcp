@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -33,12 +32,14 @@ const (
 const defaultChatResponseTimeout = 360 * time.Second
 
 type createChatRequest struct {
+	projectInput
 	Chat            chief.CreateChatRequest `json:"chat" jsonschema:"prompt is required. intelligence is one of \"auto\", \"fast\", \"expert\", \"research\" and empty defaults to \"auto\". provider is one of \"automatic\", \"anthropic\", \"openai\", \"google\". An empty scope sees the whole project"`
 	WaitForResponse bool                    `json:"wait_for_response,omitempty" jsonschema:"block until the turn finishes and the response is ready before returning"`
 	TimeoutSeconds  int                     `json:"timeout_seconds,omitempty" jsonschema:"seconds to wait when wait_for_response is set; defaults to 360"`
 }
 
 type sendMessageRequest struct {
+	projectInput
 	ChatID          string                   `json:"chat_id" jsonschema:"the chat to append a turn to"`
 	Message         chief.SendMessageRequest `json:"message" jsonschema:"prompt is required. The tuning fields match create_chat"`
 	WaitForResponse bool                     `json:"wait_for_response,omitempty" jsonschema:"block until the turn finishes and the response is ready before returning"`
@@ -46,36 +47,43 @@ type sendMessageRequest struct {
 }
 
 type listChatsRequest struct {
+	projectInput
 	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of chats to return; the server clamps to its own bounds"`
 	AfterID  string `json:"after_id,omitempty" jsonschema:"page forward from this chat ID"`
 	BeforeID string `json:"before_id,omitempty" jsonschema:"page backward from this chat ID"`
 }
 
 type chatIDRequest struct {
+	projectInput
 	ChatID string `json:"chat_id" jsonschema:"the chat ID"`
 }
 
 type updateChatRequest struct {
+	projectInput
 	ChatID string                  `json:"chat_id" jsonschema:"the chat to rename"`
 	Chat   chief.UpdateChatRequest `json:"chat" jsonschema:"title is the only mutable field and must not be empty"`
 }
 
 type messageRequest struct {
+	projectInput
 	ChatID    string `json:"chat_id" jsonschema:"the chat containing the message"`
 	MessageID string `json:"message_id" jsonschema:"the message ID"`
 }
 
 type setChatVisibilityRequest struct {
+	projectInput
 	ChatID     string               `json:"chat_id" jsonschema:"the chat to change"`
 	Visibility chief.ChatVisibility `json:"visibility" jsonschema:"one of \"project\", \"restricted\", \"private\""`
 }
 
 type addChatMemberRequest struct {
+	projectInput
 	ChatID string `json:"chat_id" jsonschema:"the restricted chat"`
 	Email  string `json:"email" jsonschema:"the email of a current member of the chat's project"`
 }
 
 type removeChatMemberRequest struct {
+	projectInput
 	ChatID string `json:"chat_id" jsonschema:"the restricted chat"`
 	UserID string `json:"user_id" jsonschema:"the user to remove; use the user_id returned by list_chat_members"`
 }
@@ -111,74 +119,112 @@ type deleteShareLinkResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerChatTools(s *mcpsdk.Server, c *chief.Client) {
-	addTool(s, c, toolMeta{
-		name: toolCreateChat,
-		desc: "Create a chat with its first turn. intelligence picks a mode preset and provider biases vendor selection within it. Turns run asynchronously; set wait_for_response to block until the answer is ready, otherwise poll get_message with the returned message_id.",
+func registerChatTools(s *toolServer) {
+	addTool(s, toolMeta{
+		name:      toolCreateChat,
+		title:     "Create Chat",
+		access:    toolWrite,
+		openWorld: true,
+		desc:      "Create a chat with its first turn. intelligence picks a mode preset and provider biases vendor selection within it. Turns run asynchronously: with wait_for_response set the call blocks until the answer is ready, otherwise it returns a message_id whose response get_message reports once the turn finishes.",
 	}, createChat)
-	addTool(s, c, toolMeta{
-		name: toolListChats,
-		desc: "List the caller's chats in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
+	addTool(s, toolMeta{
+		name:   toolListChats,
+		title:  "List Chats",
+		access: toolRead,
+		desc:   "List the caller's chats in the project, cursor-paginated. Use after_id / before_id with the returned first_id / last_id to page.",
 	}, listChats)
-	addTool(s, c, toolMeta{
-		name: toolGetChat,
-		desc: "Get a chat's metadata by ID. modified_at is null until the chat's first turn completes.",
+	addTool(s, toolMeta{
+		name:   toolGetChat,
+		title:  "Get Chat",
+		access: toolRead,
+		desc:   "Get a chat's metadata by ID. modified_at is null until the chat's first turn completes.",
 	}, getChat)
-	addTool(s, c, toolMeta{
-		name: toolUpdateChat,
-		desc: "Rename a chat. title is the only mutable field and must not be empty.",
+	addTool(s, toolMeta{
+		name:   toolUpdateChat,
+		title:  "Rename Chat",
+		access: toolWrite,
+		desc:   "Rename a chat. title is the only mutable field and must not be empty.",
 	}, updateChat)
-	addTool(s, c, toolMeta{
-		name: toolDeleteChat,
-		desc: "Delete a chat and its messages permanently.",
+	addTool(s, toolMeta{
+		name:   toolDeleteChat,
+		title:  "Delete Chat",
+		access: toolWrite,
+		desc:   "Delete a chat and its messages permanently.",
 	}, deleteChat)
-	addTool(s, c, toolMeta{
-		name: toolSendMessage,
-		desc: "Append a turn to an existing chat. The tuning fields match create_chat. Turns run asynchronously; set wait_for_response to block until the answer is ready, otherwise poll get_message with the returned message_id.",
+	addTool(s, toolMeta{
+		name:      toolSendMessage,
+		title:     "Send Message",
+		access:    toolWrite,
+		openWorld: true,
+		desc:      "Append a turn to an existing chat. The tuning fields match create_chat. Turns run asynchronously: with wait_for_response set the call blocks until the answer is ready, otherwise it returns a message_id whose response get_message reports once the turn finishes.",
 	}, sendMessage)
-	addTool(s, c, toolMeta{
-		name: toolListMessages,
-		desc: "List metadata for every message in a chat. Message content is fetched separately via get_message.",
+	addTool(s, toolMeta{
+		name:   toolListMessages,
+		title:  "List Messages",
+		access: toolRead,
+		desc:   "List metadata for every message in a chat. Message content is fetched separately via get_message.",
 	}, listMessages)
-	addTool(s, c, toolMeta{
-		name: toolGetMessage,
-		desc: "Get a single message by ID, including its prompt and response. Both stay empty until the async turn finishes, so poll until the response is present.",
+	addTool(s, toolMeta{
+		name:   toolGetMessage,
+		title:  "Get Message",
+		access: toolRead,
+		desc:   "Get a single message by ID, including its prompt and response. Both stay empty until the async turn finishes.",
 	}, getMessage)
-	addTool(s, c, toolMeta{
-		name: toolDeleteMessage,
-		desc: "Delete a single message from a chat permanently.",
+	addTool(s, toolMeta{
+		name:   toolDeleteMessage,
+		title:  "Delete Message",
+		access: toolWrite,
+		desc:   "Delete a single message from a chat permanently.",
 	}, deleteMessage)
-	addTool(s, c, toolMeta{
-		name: toolSetChatVisibility,
-		desc: "Set a chat's access level: \"project\" lets every project member read it, \"restricted\" limits reads to the owner plus the audience managed via the chat member tools, \"private\" is owner-only. Setting restricted keeps any audience the chat already had; switching to project or private clears it.",
+	addTool(s, toolMeta{
+		name:   toolSetChatVisibility,
+		title:  "Set Chat Visibility",
+		access: toolWrite,
+		desc:   "Set a chat's access level: \"project\" lets every project member read it, \"restricted\" limits reads to the owner plus the audience managed via the chat member tools, \"private\" is owner-only. Setting restricted keeps any audience the chat already had; switching to project or private clears it.",
 	}, setChatVisibility)
-	addTool(s, c, toolMeta{
-		name: toolListChatMembers,
-		desc: "List a restricted chat's audience. Use the returned user_id with remove_chat_member.",
+	addTool(s, toolMeta{
+		name:   toolListChatMembers,
+		title:  "List Chat Members",
+		access: toolRead,
+		desc:   "List a restricted chat's audience. Each member carries the user_id that remove_chat_member takes.",
 	}, listChatMembers)
-	addTool(s, c, toolMeta{
-		name: toolAddChatMember,
-		desc: "Add one project member to a restricted chat's audience by email. The email must belong to a current member of the chat's project. Re-adding an existing member succeeds without change. The chat must already be restricted; other visibility levels respond 409.",
+	addTool(s, toolMeta{
+		name:   toolAddChatMember,
+		title:  "Add Chat Member",
+		access: toolWrite,
+		desc:   "Add one project member to a restricted chat's audience by email. The email must belong to a current member of the chat's project. Re-adding an existing member succeeds without change. The chat must already be restricted; other visibility levels respond 409.",
 	}, addChatMember)
-	addTool(s, c, toolMeta{
-		name: toolRemoveChatMember,
-		desc: "Remove one user from a restricted chat's audience by user_id. The chat must already be restricted; other visibility levels respond 409.",
+	addTool(s, toolMeta{
+		name:   toolRemoveChatMember,
+		title:  "Remove Chat Member",
+		access: toolWrite,
+		desc:   "Remove one user from a restricted chat's audience by user_id. The chat must already be restricted; other visibility levels respond 409.",
 	}, removeChatMember)
-	addTool(s, c, toolMeta{
-		name: toolCreateShareLink,
-		desc: "Create a chat's public share link. Anyone with the URL can read the conversation without authentication. Each chat has at most one active link: when one already exists it is returned unchanged; use regenerate_share_link to rotate it.",
+	addTool(s, toolMeta{
+		name:      toolCreateShareLink,
+		title:     "Create Share Link",
+		access:    toolWrite,
+		openWorld: true,
+		desc:      "Create a chat's public share link. Anyone with the URL can read the conversation without authentication. Each chat has at most one active link: when one already exists it is returned unchanged, and regenerate_share_link rotates it.",
 	}, createShareLink)
-	addTool(s, c, toolMeta{
-		name: toolGetShareLink,
-		desc: "Get a chat's share-link status. url and created_at are empty when the chat isn't shared.",
+	addTool(s, toolMeta{
+		name:   toolGetShareLink,
+		title:  "Get Share Link",
+		access: toolRead,
+		desc:   "Get a chat's share-link status. url and created_at are empty when the chat isn't shared.",
 	}, getShareLink)
-	addTool(s, c, toolMeta{
-		name: toolRegenerateShareLink,
-		desc: "Revoke a chat's current share link, if any, and mint a new URL. The old URL stops working immediately.",
+	addTool(s, toolMeta{
+		name:      toolRegenerateShareLink,
+		title:     "Regenerate Share Link",
+		access:    toolWrite,
+		openWorld: true,
+		desc:      "Revoke a chat's current share link, if any, and mint a new URL. The old URL stops working immediately.",
 	}, regenerateShareLink)
-	addTool(s, c, toolMeta{
-		name: toolDeleteShareLink,
-		desc: "Revoke a chat's share link. The public URL stops working immediately. Responds 404 when no active link exists.",
+	addTool(s, toolMeta{
+		name:   toolDeleteShareLink,
+		title:  "Delete Share Link",
+		access: toolWrite,
+		desc:   "Revoke a chat's share link. The public URL stops working immediately. Responds 404 when no active link exists.",
 	}, deleteShareLink)
 }
 
