@@ -7,7 +7,28 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+
+	"github.com/Storytell-ai/chief-go/chief"
 )
+
+// TestSearchSummaryCountsPassagesFromTheAPI decodes a response shaped like the
+// API's and checks the summary reports its passage count, which comes from
+// total_chunks rather than the number of grouped results.
+func TestSearchSummaryCountsPassagesFromTheAPI(t *testing.T) {
+	const body = `{"query":"revenue","duration_ms":7,"total_chunks":3,"partial":false,"results":[` +
+		`{"asset_id":"a1","title":"Q1","relevance_score":0.9,"chunks":[` +
+		`{"position":0,"score":0.9,"content":"x"},{"position":1,"score":0.8,"content":"y"},{"position":2,"score":0.7,"content":"z"}]}]}`
+
+	var resp chief.SearchResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("decode search response: %v", err)
+	}
+
+	const want = "found 3 passage(s) across 1 document(s) in 7ms"
+	if got := searchSummary(&resp); got != want {
+		t.Fatalf("summary = %q, want %q", got, want)
+	}
+}
 
 // TestSearchScopeOnTheWire pins the flattening in scopeFromSearchRequest.
 //
@@ -46,11 +67,11 @@ func TestSearchScopeOnTheWire(t *testing.T) {
 					mu.Unlock()
 				}
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = io.WriteString(w, `{"query":"revenue","duration_ms":1,"total_results":0,"partial":false,"results":[]}`)
+				_, _ = io.WriteString(w, `{"query":"revenue","duration_ms":1,"total_chunks":0,"partial":false,"results":[]}`)
 			}))
 			defer chiefAPI.Close()
 
-			mcpServer := httptest.NewServer(newHTTPHandler(&resolvedFlags{baseURL: chiefAPI.URL}, "/mcp"))
+			mcpServer := httptest.NewServer(newHTTPHandler(&resolvedFlags{baseURL: chiefAPI.URL, project: "project_a"}, "/mcp", ""))
 			defer mcpServer.Close()
 			mcpURL := mcpServer.URL + "/mcp"
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -42,30 +41,43 @@ type deleteProjectInvitationResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerProjectTools(s *mcpsdk.Server, c *chief.Client) {
-	addTool(s, c, toolMeta{
-		name: toolListProjects,
-		desc: "List the projects the API key can access. Project tools need only the API key, not the configured project ID.",
+func registerProjectTools(s *toolServer) {
+	addTool(s, toolMeta{
+		name:   toolListProjects,
+		title:  "List Projects",
+		access: toolRead,
+		desc:   "List the projects the API key can access. Project tools need only the API key, not the configured project ID.",
 	}, listProjects)
-	addTool(s, c, toolMeta{
-		name: toolCreateProject,
-		desc: "Create a project. It lands in the org and workspace of the caller's root grant.",
+	addTool(s, toolMeta{
+		name:   toolCreateProject,
+		title:  "Create Project",
+		access: toolWrite,
+		desc:   "Create a project. It lands in the org and workspace of the caller's root grant.",
 	}, createProject)
-	addTool(s, c, toolMeta{
-		name: toolUpdateProject,
-		desc: "Replace a project's name and description — the only two mutable fields. The body is a full set, not a patch: an empty description clears it.",
+	addTool(s, toolMeta{
+		name:   toolUpdateProject,
+		title:  "Update Project",
+		access: toolWrite,
+		desc:   "Replace a project's name and description — the only two mutable fields. The body is a full set, not a patch: an empty description clears it.",
 	}, updateProject)
-	addTool(s, c, toolMeta{
-		name: toolListProjectMembers,
-		desc: "List every user holding a grant in a project, with their role and how they joined.",
+	addTool(s, toolMeta{
+		name:   toolListProjectMembers,
+		title:  "List Project Members",
+		access: toolRead,
+		desc:   "List every user holding a grant in a project, with their role and how they joined.",
 	}, listProjectMembers)
-	addTool(s, c, toolMeta{
-		name: toolCreateProjectInvitation,
-		desc: "Invite one user to a project by email. role is one of \"collaborator\", \"reader\", \"owner\". The invitation email is sent automatically; the user becomes a member only after accepting. A project holds one invitation per role: when one already exists the email is added to it, and re-inviting an email already on it succeeds unchanged.",
+	addTool(s, toolMeta{
+		name:      toolCreateProjectInvitation,
+		title:     "Invite to Project",
+		access:    toolWrite,
+		openWorld: true,
+		desc:      "Invite one user to a project by email. role is one of \"collaborator\", \"reader\", \"owner\". The invitation email is sent automatically; the user becomes a member only after accepting. A project holds one invitation per role: when one already exists the email is added to it, and re-inviting an email already on it succeeds unchanged.",
 	}, createProjectInvitation)
-	addTool(s, c, toolMeta{
-		name: toolDeleteProjectInvitation,
-		desc: "Revoke a pending project invitation by ID.",
+	addTool(s, toolMeta{
+		name:   toolDeleteProjectInvitation,
+		title:  "Revoke Project Invitation",
+		access: toolWrite,
+		desc:   "Revoke a pending project invitation by ID.",
 	}, deleteProjectInvitation)
 }
 

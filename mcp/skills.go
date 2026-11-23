@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -18,17 +17,25 @@ const (
 	toolDisableSkill = "disable_skill"
 )
 
+type createSkillRequest struct {
+	projectInput
+	chief.CreateSkillRequest
+}
+
 type listSkillsRequest struct {
+	projectInput
 	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of skills to return; the server clamps to its own bounds"`
 	AfterID  string `json:"after_id,omitempty" jsonschema:"page forward from this skill ID"`
 	BeforeID string `json:"before_id,omitempty" jsonschema:"page backward from this skill ID"`
 }
 
 type skillIDRequest struct {
+	projectInput
 	SkillID string `json:"skill_id" jsonschema:"the skill ID"`
 }
 
 type updateSkillRequest struct {
+	projectInput
 	SkillID string                   `json:"skill_id" jsonschema:"the skill to update"`
 	Skill   chief.UpdateSkillRequest `json:"skill" jsonschema:"the patch; omitted fields are left unchanged. category, when set, must be \"skill\" or \"persona\""`
 }
@@ -37,39 +44,53 @@ type deleteSkillResponse struct {
 	Deleted bool `json:"deleted"`
 }
 
-func registerSkillTools(s *mcpsdk.Server, c *chief.Client) {
-	addTool(s, c, toolMeta{
-		name: toolCreateSkill,
-		desc: "Create a skill in the project. scope is \"project\" or \"user\". category is \"skill\" or \"persona\". Content is the skill body.",
+func registerSkillTools(s *toolServer) {
+	addTool(s, toolMeta{
+		name:   toolCreateSkill,
+		title:  "Create Skill",
+		access: toolWrite,
+		desc:   "Create a skill in the project. scope is \"project\" or \"user\". category is \"skill\" or \"persona\". Content is the skill body.",
 	}, createSkill)
-	addTool(s, c, toolMeta{
-		name: toolListSkills,
-		desc: "List the skills visible in the project, cursor-paginated, including each skill's enabled state for the caller. Use after_id / before_id with the returned first_id / last_id to page.",
+	addTool(s, toolMeta{
+		name:   toolListSkills,
+		title:  "List Skills",
+		access: toolRead,
+		desc:   "List the skills visible in the project, cursor-paginated, including each skill's enabled state for the caller. Use after_id / before_id with the returned first_id / last_id to page.",
 	}, listSkills)
-	addTool(s, c, toolMeta{
-		name: toolGetSkill,
-		desc: "Get a single skill by ID, including its content and enabled state for the caller.",
+	addTool(s, toolMeta{
+		name:   toolGetSkill,
+		title:  "Get Skill",
+		access: toolRead,
+		desc:   "Get a single skill by ID, including its content and enabled state for the caller.",
 	}, getSkill)
-	addTool(s, c, toolMeta{
-		name: toolUpdateSkill,
-		desc: "Patch a skill. Omitted fields are left unchanged. category, when set, must be \"skill\" or \"persona\". System skills are read-only.",
+	addTool(s, toolMeta{
+		name:   toolUpdateSkill,
+		title:  "Update Skill",
+		access: toolWrite,
+		desc:   "Patch a skill. Omitted fields are left unchanged. category, when set, must be \"skill\" or \"persona\". System skills are read-only.",
 	}, updateSkill)
-	addTool(s, c, toolMeta{
-		name: toolDeleteSkill,
-		desc: "Delete a skill permanently. System skills are read-only.",
+	addTool(s, toolMeta{
+		name:   toolDeleteSkill,
+		title:  "Delete Skill",
+		access: toolWrite,
+		desc:   "Delete a skill permanently. System skills are read-only.",
 	}, deleteSkill)
-	addTool(s, c, toolMeta{
-		name: toolEnableSkill,
-		desc: "Enable a skill for the caller so it is offered during chats.",
+	addTool(s, toolMeta{
+		name:   toolEnableSkill,
+		title:  "Enable Skill",
+		access: toolWrite,
+		desc:   "Enable a skill for the caller so it is offered during chats.",
 	}, enableSkill)
-	addTool(s, c, toolMeta{
-		name: toolDisableSkill,
-		desc: "Disable a skill for the caller so it is no longer offered during chats.",
+	addTool(s, toolMeta{
+		name:   toolDisableSkill,
+		title:  "Disable Skill",
+		access: toolWrite,
+		desc:   "Disable a skill for the caller so it is no longer offered during chats.",
 	}, disableSkill)
 }
 
-func createSkill(ctx context.Context, c *chief.Client, req chief.CreateSkillRequest) (*chief.SkillResponse, string, error) {
-	skill, err := c.Skills.Create(ctx, &req)
+func createSkill(ctx context.Context, c *chief.Client, req createSkillRequest) (*chief.SkillResponse, string, error) {
+	skill, err := c.Skills.Create(ctx, &req.CreateSkillRequest)
 	if err != nil {
 		return nil, "", fmt.Errorf("create skill %q: %w", req.Name, err)
 	}

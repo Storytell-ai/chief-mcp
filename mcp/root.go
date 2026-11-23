@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,8 @@ type resolvedFlags struct {
 	debug    bool
 }
 
+// Execute runs the subcommand args[0] names (stdio, http, version or help) and
+// returns once it ends; the transports serve until ctx is cancelled.
 func Execute(ctx context.Context, args []string) error {
 	if len(args) < 1 {
 		printUsage()
@@ -70,7 +73,15 @@ func runStdio(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return newServer(c).Run(ctx, &mcpsdk.StdioTransport{})
+	return newStdioServer(c).Run(ctx, &mcpsdk.StdioTransport{})
+}
+
+// newStdioServer lists every tool: a stdio caller runs on its own personal
+// access token, which carries write.
+func newStdioServer(c *chief.Client) *mcpsdk.Server {
+	s := newServer(c, toolWrite)
+	registerUploadTool(s)
+	return s.mcp
 }
 
 func runHTTP(ctx context.Context, args []string) error {
@@ -79,11 +90,25 @@ func runHTTP(ctx context.Context, args []string) error {
 	registerConnectionFlags(fs, flags)
 	addr := fs.String("addr", ":8080", "address to listen on")
 	path := fs.String("path", "/mcp", "path to mount the MCP endpoint on")
+	authURL := fs.String("auth-url", "", "Chief auth service URL that a 401 sends clients to for sign-in (env CHIEF_AUTH_URL)")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}
+	if *authURL == "" {
+		*authURL = os.Getenv("CHIEF_AUTH_URL")
+	}
 
-	return serveHTTP(ctx, flags, *addr, *path)
+	return serveHTTP(ctx, flags, *addr, *path, resourceMetadataURL(*authURL, *path))
+}
+
+// resourceMetadataURL is where the auth service serves this server's protected
+// resource metadata: RFC 9728 puts the resource's path after the well-known
+// suffix. Empty when no auth service is configured, as for a PAT-only server.
+func resourceMetadataURL(authURL, path string) string {
+	if authURL == "" {
+		return ""
+	}
+	return strings.TrimRight(authURL, "/") + "/.well-known/oauth-protected-resource" + path
 }
 
 // newClient builds a Client from the resolved flags.
@@ -97,25 +122,25 @@ func newClient(flags *resolvedFlags) (*chief.Client, error) {
 	)
 }
 
-type clientContextKey struct{}
+type serverContextKey struct{}
 
 // serveHTTP serves the MCP endpoint and the health probes on one listener.
 //
 // The Streamable HTTP handler sits behind a per-request auth gate. The gate
-// stashes a request-scoped client in the context for the SDK's getServer
-// callback, which can't return an error, so a missing token must be rejected
-// with 401 before the handler runs.
+// stashes a request-scoped server in the context for the SDK's getServer
+// callback, which can't return an error, so a bad token must be rejected
+// before the handler runs.
 //
 // /livez and /readyz are unauthenticated, since the gate wraps only the MCP
 // handler rather than the mux. A deployment that exposes this listener to the
 // internet should route the MCP path alone and leave the probes to whatever
 // reaches the process directly.
-func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, path string) error {
+func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, path, resourceMetadataURL string) error {
 	// A tool call runs as long as the upstream Chief API takes, so a WriteTimeout
 	// would sever it mid-response.
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           newHTTPHandler(flags, path),
+		Handler:           newHTTPHandler(flags, path, resourceMetadataURL),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
@@ -142,18 +167,18 @@ func serveHTTP(ctx context.Context, flags *resolvedFlags, addr, path string) err
 
 // newHTTPHandler mounts the auth-gated MCP endpoint and the health probes on
 // one mux.
-func newHTTPHandler(flags *resolvedFlags, path string) http.Handler {
+func newHTTPHandler(flags *resolvedFlags, path, resourceMetadataURL string) http.Handler {
 	// Stateless mode runs getServer on every request, so each request's own
 	// X-API-Key reaches the tools; stateful mode would pin the initialize-time
 	// client for the session's lifetime. Every tool here is plain
 	// request/response, so losing SSE costs nothing.
 	streamable := mcpsdk.NewStreamableHTTPHandler(func(r *http.Request) *mcpsdk.Server {
-		c, _ := r.Context().Value(clientContextKey{}).(*chief.Client)
-		return newServer(c)
+		s, _ := r.Context().Value(serverContextKey{}).(*mcpsdk.Server)
+		return s
 	}, &mcpsdk.StreamableHTTPOptions{Stateless: true})
 
 	mux := http.NewServeMux()
-	mux.Handle(path, authMiddleware(flags, streamable))
+	mux.Handle(path, authMiddleware(flags, resourceMetadataURL, streamable))
 	mux.HandleFunc("GET /livez", healthOK)
 	mux.HandleFunc("GET /readyz", healthOK)
 	return mux
@@ -163,12 +188,18 @@ func healthOK(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-// authMiddleware rejects tokenless requests and passes a request-scoped client
-// to the MCP handler via context.
-func authMiddleware(flags *resolvedFlags, next http.Handler) http.Handler {
+// authMiddleware checks the request's credential against the Chief API and
+// passes the MCP handler, via context, a server listing only the tools that
+// credential may use.
+//
+// A 401 carries resource_metadata so an MCP client can find where to sign in.
+// Only a missing or rejected credential is a 401: Claude answers one by asking
+// the user to reconnect, so a Chief API outage is a 503 instead.
+func authMiddleware(flags *resolvedFlags, resourceMetadataURL string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiKey := requestAPIKey(r)
 		if apiKey == "" {
+			w.Header().Set("WWW-Authenticate", bearerChallenge(resourceMetadataURL, ""))
 			http.Error(w, "missing API key: set X-API-Key or Authorization: Bearer <token>", http.StatusUnauthorized)
 			return
 		}
@@ -187,9 +218,55 @@ func authMiddleware(flags *resolvedFlags, next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), clientContextKey{}, c)
+		access, err := tokenAccess(r.Context(), c)
+		if chief.IsUnauthorized(err) {
+			w.Header().Set("WWW-Authenticate", bearerChallenge(resourceMetadataURL, "invalid_token"))
+			http.Error(w, "invalid or expired API key", http.StatusUnauthorized)
+			return
+		}
+		if err != nil {
+			http.Error(w, "the Chief API is unavailable; retry shortly", http.StatusServiceUnavailable)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), serverContextKey{}, newServer(c, access).mcp)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// tokenTimeout bounds only the gate's credential check, not the tool calls
+// behind it, which run as long as the Chief API takes.
+const tokenTimeout = 10 * time.Second
+
+// tokenAccess asks the Chief API what the credential may do. A credential
+// without the write scope, whatever else it holds, gets read tools only.
+func tokenAccess(ctx context.Context, c *chief.Client) (toolAccess, error) {
+	ctx, cancel := context.WithTimeout(ctx, tokenTimeout)
+	defer cancel()
+	info, err := c.Token(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if slices.Contains(info.Scopes, chief.TokenScopeWrite) {
+		return toolWrite, nil
+	}
+	return toolRead, nil
+}
+
+// bearerChallenge is the WWW-Authenticate value for a 401. errCode is an RFC
+// 6750 error code, empty when the request sent no credential.
+func bearerChallenge(resourceMetadataURL, errCode string) string {
+	var params []string
+	if errCode != "" {
+		params = append(params, `error="`+errCode+`"`)
+	}
+	if resourceMetadataURL != "" {
+		params = append(params, `resource_metadata="`+resourceMetadataURL+`"`)
+	}
+	if len(params) == 0 {
+		return "Bearer"
+	}
+	return "Bearer " + strings.Join(params, ", ")
 }
 
 // requestAPIKey reads the token from X-API-Key, falling back to a Bearer token

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const toolSearchKnowledgeBase = "search_knowledge_base"
@@ -17,6 +16,7 @@ const toolSearchKnowledgeBase = "search_knowledge_base"
 // is easy for a model to trip over and never what an agent wants. With the
 // lists flat, "no lists given" can only mean the whole project.
 type searchRequest struct {
+	projectInput
 	Query       string   `json:"query" jsonschema:"the question to answer, in natural language; this is a semantic search, so write a question rather than keywords"`
 	MaxResults  int      `json:"max_results,omitempty" jsonschema:"maximum passages to return, 1 to 50; defaults to 10"`
 	AssetIDs    []string `json:"asset_ids,omitempty" jsonschema:"restrict the search to these assets; omit every list to search the whole project"`
@@ -26,16 +26,15 @@ type searchRequest struct {
 	IndexedOnly bool     `json:"indexed_only,omitempty" jsonschema:"skip the slower pass that reads documents still being ingested; set this when speed matters more than covering a just-uploaded file"`
 }
 
-func registerSearchTools(s *mcpsdk.Server, c *chief.Client) {
-	addTool(s, c, toolMeta{
-		name: toolSearchKnowledgeBase,
+func registerSearchTools(s *toolServer) {
+	addTool(s, toolMeta{
+		name:   toolSearchKnowledgeBase,
+		title:  "Search Knowledge Base",
+		access: toolRead,
 		desc: "Search the project's documents and return the passages that answer a question. " +
-			"Use this whenever the user asks about their own files, uploads, or project content, " +
-			"rather than guessing from memory. " +
-			"The search is semantic, so phrase the query as a natural question; keywords work poorly. " +
-			"Searches the whole project unless you pass asset_ids, label_ids, view_ids, or concept_ids. " +
+			"The search is semantic: a natural-language question matches well, bare keywords poorly. " +
+			"Searches the whole project unless asset_ids, label_ids, view_ids, or concept_ids narrow it. " +
 			"Each result carries an asset and its matching passages, best first, with a relevance_score from 0 to 1 where higher is a stronger match. " +
-			"Quote the passages rather than paraphrasing them, and cite the asset title. " +
 			"Requires a paid plan.",
 	}, searchKnowledgeBase)
 }
@@ -82,7 +81,7 @@ func searchSummary(resp *chief.SearchResponse) string {
 	}
 
 	summary := fmt.Sprintf("found %d passage(s) across %d document(s) in %dms",
-		resp.TotalResults, len(resp.Results), resp.DurationMS)
+		resp.TotalChunks, len(resp.Results), resp.DurationMS)
 	if resp.Partial {
 		summary += "; the search timed out before finishing, so results may be incomplete"
 	}
