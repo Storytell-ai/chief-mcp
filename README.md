@@ -20,6 +20,8 @@ Connect to the hosted server at `https://mcp.chief.bot/mcp`, or run the binary y
 - **Skills** — Create, list, get, update, and delete skills and personas; enable or disable them for the caller.
 - **Memories** — Create, list, get, update, and delete project memories.
 - **Projects** — List, create, and update projects; list members; create and revoke invitations. These tools need only the API key, not a project ID.
+- **Captures**: List the captures you recorded with Chief Companion, read one as a timeline with its screenshots (the latest one by default), and look at a single screenshot. With a default project, "latest" and the list stay in that project unless you ask for another or for all of them; without one they cover every project. While you record, wait for what is added: until recording stops, which is when who said what has settled, or live as you talk. These tools need only the API key, not a project ID.
+- **Links**: Open a chief.bot link to a capture or a live session. This tool needs only the API key, not a project ID.
 
 ## Remote MCP Server
 
@@ -43,7 +45,7 @@ Then run `/mcp` in Claude Code, select `chief`, and authenticate.
 
 ### With a Personal Access Token
 
-Scripts and clients that can't sign in through a browser send a Chief Personal Access Token with every request instead. Token requests have no default project, so project-scoped tools also need an `X-Project-Id` header. The Projects tools work with the token alone.
+Scripts and clients that can't sign in through a browser send a Chief Personal Access Token with every request instead. Token requests have no default project, so project-scoped tools also need an `X-Project-Id` header. The Projects, Captures and Links tools work with the token alone.
 
 #### Claude Code
 

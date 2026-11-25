@@ -5,6 +5,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/Storytell-ai/chief-go/chief"
@@ -22,6 +23,8 @@ var toolGroups = []func(*toolServer){
 	registerMemoryTools,
 	registerProjectTools,
 	registerSearchTools,
+	registerCaptureTools,
+	registerLinkTools,
 }
 
 // toolServer is an MCP server under construction and what its tools bind to.
@@ -38,7 +41,8 @@ type toolServer struct {
 //
 // To add a tool group: write a registerXxxTools(s) in its own file and add it
 // to toolGroups. A tool whose route needs a project embeds projectInput in its
-// request type.
+// request type. Register a tool with addTool, or with addContentTool when its
+// answer is images or text written for the model.
 func newServer(c *chief.Client, access toolAccess) *toolServer {
 	s := &toolServer{
 		mcp:    mcpsdk.NewServer(&mcpsdk.Implementation{Name: "chief-mcp", Version: buildVersion()}, nil),
@@ -52,8 +56,11 @@ func newServer(c *chief.Client, access toolAccess) *toolServer {
 }
 
 // toolFunc is a tool's logic: it takes the typed request and returns the typed
-// response plus a one-line summary for the text result.
+// response plus the text result.
 type toolFunc[Req, Resp any] func(ctx context.Context, c *chief.Client, req Req) (Resp, string, error)
+
+// contentFunc is the logic of a tool whose whole answer is its content.
+type contentFunc[Req any] func(ctx context.Context, c *chief.Client, req Req) ([]mcpsdk.Content, error)
 
 // toolAccess says whether a tool only reads Chief data or can change it, and
 // sets the tool's read-only and destructive hints.
@@ -90,9 +97,44 @@ type projectScoped interface {
 	projectOverride() string
 }
 
-// addTool registers fn as an MCP tool, wrapping it with the shared result and
-// error plumbing. A write tool is skipped when s.access is toolRead.
+// addTool registers fn as an MCP tool that answers with its summary and its
+// response as text, and its response as structured output too: some clients
+// show their model only the text, and some only the structured output.
 func addTool[Req, Resp any](s *toolServer, meta toolMeta, fn toolFunc[Req, Resp]) {
+	registerTool(s, meta, func(ctx context.Context, c *chief.Client, req Req) (*mcpsdk.CallToolResult, Resp, error) {
+		resp, summary, err := fn(ctx, c, req)
+		if err != nil {
+			var zero Resp
+			return nil, zero, err
+		}
+		data, err := json.Marshal(resp)
+		if err != nil {
+			var zero Resp
+			return nil, zero, fmt.Errorf("encode response: %w", err)
+		}
+		return &mcpsdk.CallToolResult{Content: append(textContent(summary), textContent(string(data))...)}, resp, nil
+	})
+}
+
+// addContentTool registers fn as an MCP tool that answers with content alone.
+// It has no structured output: a client that shows its model that in place of
+// the content would lose the images.
+func addContentTool[Req any](s *toolServer, meta toolMeta, fn contentFunc[Req]) {
+	registerTool(s, meta, func(ctx context.Context, c *chief.Client, req Req) (*mcpsdk.CallToolResult, any, error) {
+		content, err := fn(ctx, c, req)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &mcpsdk.CallToolResult{Content: content}, nil, nil
+	})
+}
+
+// registerTool adds the tool meta describes, calling it with the client for the
+// project its request names. A write tool is skipped when s.access is toolRead.
+func registerTool[Req, Resp any](
+	s *toolServer, meta toolMeta,
+	call func(ctx context.Context, c *chief.Client, req Req) (*mcpsdk.CallToolResult, Resp, error),
+) {
 	if meta.access == toolWrite && s.access == toolRead {
 		return
 	}
@@ -121,25 +163,16 @@ func addTool[Req, Resp any](s *toolServer, meta toolMeta, fn toolFunc[Req, Resp]
 	}
 	mcpsdk.AddTool(s.mcp, tool,
 		func(ctx context.Context, _ *mcpsdk.CallToolRequest, req Req) (*mcpsdk.CallToolResult, Resp, error) {
-			var zero Resp
 			c := s.client
 			if scoped, ok := any(req).(projectScoped); ok {
 				if project := scoped.projectOverride(); project != "" {
 					c = c.ForProject(project)
 				}
 			}
-			resp, summary, err := fn(ctx, c, req)
-			if err != nil {
-				return nil, zero, err
-			}
-			return textResult(summary), resp, nil
+			return call(ctx, c, req)
 		})
 }
 
-// textResult wraps a summary string as a tool result; the SDK derives the
-// structured output from the typed return value separately.
-func textResult(summary string) *mcpsdk.CallToolResult {
-	return &mcpsdk.CallToolResult{
-		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: summary}},
-	}
+func textContent(text string) []mcpsdk.Content {
+	return []mcpsdk.Content{&mcpsdk.TextContent{Text: text}}
 }

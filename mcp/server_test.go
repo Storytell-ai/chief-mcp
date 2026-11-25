@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -9,8 +10,8 @@ import (
 // tool: a title, a name of at most 64 characters, and exactly one of
 // readOnlyHint or destructiveHint. Read-only connections will be offered only
 // the tools marked read, so the access a tool declares must match what it does;
-// the name prefix is the cross-check, since every read tool lists, gets, or
-// searches and no write tool does.
+// the name prefix is the cross-check, since every read tool lists, gets, reads,
+// opens, searches, or waits and no write tool does.
 func TestToolAnnotations(t *testing.T) {
 	for _, tool := range listStdioTools(t) {
 		if len(tool.Name) > 64 {
@@ -28,7 +29,9 @@ func TestToolAnnotations(t *testing.T) {
 		if a.ReadOnlyHint == destructive {
 			t.Errorf("%s: readOnlyHint %t, destructiveHint %t; want exactly one true", tool.Name, a.ReadOnlyHint, destructive)
 		}
-		looksRead := strings.HasPrefix(tool.Name, "list_") || strings.HasPrefix(tool.Name, "get_") || strings.HasPrefix(tool.Name, "search_")
+		looksRead := slices.ContainsFunc([]string{"list_", "get_", "read_", "open_", "search_", "wait_"}, func(prefix string) bool {
+			return strings.HasPrefix(tool.Name, prefix)
+		})
 		if a.ReadOnlyHint != looksRead {
 			t.Errorf("%s: readOnlyHint %t disagrees with its name", tool.Name, a.ReadOnlyHint)
 		}
