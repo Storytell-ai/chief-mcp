@@ -17,3 +17,6 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 )
+
+// TODO(amalucelli): drop once chief-go is tagged with captures and links.
+replace github.com/Storytell-ai/chief-go => ../chief-go

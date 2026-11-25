@@ -154,8 +154,8 @@ func TestResourceMetadataURL(t *testing.T) {
 // every HTTP tool.
 func TestToolsFollowTokenScopes(t *testing.T) {
 	all := listHTTPTools(t, `["read","write"]`)
-	if len(all) != 59 {
-		t.Errorf("read+write token lists %d tools, want 59", len(all))
+	if len(all) != 64 {
+		t.Errorf("read+write token lists %d tools, want 64", len(all))
 	}
 	var wantRead []string
 	for _, tool := range all {

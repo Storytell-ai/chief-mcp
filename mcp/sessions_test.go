@@ -58,7 +58,10 @@ func TestGetSessionTranscriptPagesThroughTheAPI(t *testing.T) {
 
 	var rpc struct {
 		Result struct {
-			IsError           bool `json:"isError"`
+			IsError bool `json:"isError"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
 			StructuredContent struct {
 				Data []struct {
 					Index int    `json:"index"`
@@ -75,6 +78,10 @@ func TestGetSessionTranscriptPagesThroughTheAPI(t *testing.T) {
 	}
 	if rpc.Result.IsError {
 		t.Fatalf("tools/call returned an error result: %s", raw)
+	}
+	// A harness that shows its model only text gets the turns too.
+	if n := len(rpc.Result.Content); n != 2 || !strings.Contains(rpc.Result.Content[1].Text, `"text":"second"`) {
+		t.Errorf("text content = %+v, want the summary and then the response", rpc.Result.Content)
 	}
 	page := rpc.Result.StructuredContent
 	if len(page.Data) != 2 || page.Data[1].Index != 13 || page.Data[1].Text != "second" || page.Data[1].At != "1:03" {
